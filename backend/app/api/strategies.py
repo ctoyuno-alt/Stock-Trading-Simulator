@@ -6,7 +6,7 @@ Exposes:
 - Multi-asset strategy universe scanner evaluating all 10 liquid NSE equities.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
