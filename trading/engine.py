@@ -16,7 +16,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import uuid
 
 from backend.app.core.config import get_settings
-from database.models import AccountModel, OrderModel, OrderSide, OrderStatus, PositionModel, PositionStatus, PortfolioSnapshotModel
+try:
+    from database.models import AccountModel, OrderModel, OrderSide, OrderStatus, PositionModel, PositionStatus, PortfolioSnapshotModel
+except ImportError:
+    AccountModel = OrderModel = OrderSide = OrderStatus = PositionModel = PositionStatus = PortfolioSnapshotModel = Any  # type: ignore
 from trading.charges import calculate_trade_friction, round_inr
 from trading.risk import calculate_position_size, validate_order_risk, PositionSizeResult
 

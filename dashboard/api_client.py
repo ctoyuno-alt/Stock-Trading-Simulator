@@ -168,5 +168,28 @@ class DashboardAPIClient:
             {"exit_price": exit_price, "reason": reason},
         )
 
+    # --- Autonomous AI Auto-Trader ---
+    def get_auto_trader_status(self) -> Dict[str, Any]:
+        return self._request("GET", "/api/v1/auto-trader/status")
+
+    def update_auto_trader_config(self, config_dict: Dict[str, Any]) -> Dict[str, Any]:
+        return self._request("POST", "/api/v1/auto-trader/config", config_dict)
+
+    def run_auto_trader_tick(
+        self,
+        market: str = "IN",
+        timeframe: Optional[str] = None,
+        enforce_market_hours: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"market": market}
+        if timeframe is not None:
+            payload["timeframe"] = timeframe
+        if enforce_market_hours is not None:
+            payload["enforce_market_hours"] = enforce_market_hours
+        return self._request("POST", f"/api/v1/auto-trader/tick?market={market}", payload, timeout=30)
+
+    def clear_auto_trader_history(self) -> Dict[str, Any]:
+        return self._request("POST", "/api/v1/auto-trader/clear-history")
+
 
 api_client = DashboardAPIClient()

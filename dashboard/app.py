@@ -30,6 +30,7 @@ from dashboard.components.charts import (
     create_equity_curve_chart,
     create_rsi_chart,
 )
+from dashboard.components.tradingview import render_tradingview_chart
 
 # Page configuration
 st.set_page_config(
@@ -47,6 +48,10 @@ st.markdown("""
     .badge-open { background-color: #1B5E20; color: #A5D6A7; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
     .badge-closed { background-color: #B71C1C; color: #FFCDD2; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
     .badge-paper { background-color: #0D47A1; color: #90CAF9; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .badge-buy { background-color: #1B5E20; color: #A5D6A7; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-sell-sl { background-color: #B71C1C; color: #FFCDD2; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-sell-tp { background-color: #004D40; color: #80CBC4; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-sell-rev { background-color: #E65100; color: #FFE0B2; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
     .metric-card { background-color: #1E1E1E; border-radius: 8px; padding: 12px; border: 1px solid #333333; }
 </style>
 """, unsafe_allow_html=True)
@@ -111,8 +116,9 @@ with st.sidebar:
 
     # Live Monitoring & Auto-Refresh Controls
     st.markdown("#### **Live Monitoring Mode**")
-    auto_refresh = st.toggle("🔴 Auto-Refresh Live Chart", value=False)
+    auto_refresh = st.toggle("🔴 Auto-Refresh Live Stream", value=False)
     refresh_rate = 10
+    auto_trade_on_refresh = False
     if auto_refresh:
         refresh_rate = st.select_slider(
             "Refresh Interval",
@@ -120,7 +126,8 @@ with st.sidebar:
             value=10,
             format_func=lambda s: f"{s}s",
         )
-        st.caption(f"⚡ Live polling active (refreshing every {refresh_rate}s)")
+        auto_trade_on_refresh = st.checkbox("🤖 Auto-Trade Cycle on Refresh", value=False)
+        st.caption(f"⚡ Live polling active ({refresh_rate}s interval)")
 
     st.divider()
 
@@ -164,9 +171,10 @@ st.markdown(
 
 
 # --- Dashboard Tabs ---
-tab_market, tab_ai, tab_positions, tab_ledger, tab_backtest, tab_health = st.tabs([
+tab_market, tab_ai, tab_autotrader, tab_positions, tab_ledger, tab_backtest, tab_health = st.tabs([
     "📊 Market & Technicals",
-    "🤖 AI & Strategy Signals",
+    "🧠 AI Confluence Analysis",
+    "🤖 Autonomous AI Auto-Trader",
     "💼 Positions & Execution",
     "📜 Trade Ledger & Performance",
     "🧪 Historical Backtest",
@@ -181,10 +189,17 @@ with tab_market:
     m_top_col1, m_top_col2 = st.columns([4, 1])
     with m_top_col1:
         st.markdown(f"### **{selected_symbol} — Live Market & Technical Indicators**")
-        st.caption(f"Data source: Yahoo Finance • {active_market} Market ({active_currency}) • Timeframe: {timeframe} • Polling interval: {refresh_rate if auto_refresh else 'Manual'}s")
+        st.caption(f"Data source: TradingView & Yahoo Finance • {active_market} Market ({active_currency}) • Timeframe: {timeframe} • Polling interval: {refresh_rate if auto_refresh else 'Manual'}s")
     with m_top_col2:
         if st.button("🔄 Refresh Quote Now", use_container_width=True):
             st.rerun()
+
+    chart_engine = st.radio(
+        "Chart Engine View",
+        ["📈 TradingView Interactive Pro Chart (Live)", "📊 Quantitative Multi-Panel (EMA/VWAP/MACD/RSI)"],
+        horizontal=True,
+        index=0,
+    )
 
     # Smart lookback period based on selected timeframe
     default_period = "5d" if timeframe == "15m" else ("1mo" if timeframe == "1h" else "6mo")
@@ -194,19 +209,23 @@ with tab_market:
         indicators_data = api_client.get_indicators(selected_symbol, timeframe=timeframe)
 
     if candles_data.get("error"):
-        st.error(f"Failed to fetch market data: {candles_data.get('message')}")
-    else:
-        # Latest Snapshot KPIs
-        latest_snap = indicators_data.get("latest_snapshot", {})
-        if latest_snap:
-            kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5, kpi_c6 = st.columns(6)
-            kpi_c1.metric("Close", f"{curr_sym}{latest_snap.get('close_price', 0):,.2f}")
-            kpi_c2.metric("EMA 20", f"{curr_sym}{latest_snap.get('ema_fast_20') or 0:,.2f}")
-            kpi_c3.metric("EMA 50", f"{curr_sym}{latest_snap.get('ema_slow_50') or 0:,.2f}", delta=f"{latest_snap.get('ema_spread_pct') or 0:+.2f}%")
-            kpi_c4.metric("RSI 14", f"{latest_snap.get('rsi_14') or 0:.1f}", delta=latest_snap.get("rsi_regime"))
-            kpi_c5.metric("MACD Hist", f"{latest_snap.get('macd_histogram') or 0:+.3f}", delta=latest_snap.get("macd_state"))
-            kpi_c6.metric("VWAP", f"{curr_sym}{latest_snap.get('vwap') or 0:,.2f}", delta=f"{latest_snap.get('price_to_vwap_pct') or 0:+.2f}%")
+        st.warning(f"Note on historical candles: {candles_data.get('message')}")
 
+    # Latest Snapshot KPIs
+    latest_snap = indicators_data.get("latest_snapshot", {})
+    if latest_snap:
+        kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5, kpi_c6 = st.columns(6)
+        kpi_c1.metric("Close", f"{curr_sym}{latest_snap.get('close_price', 0):,.2f}")
+        kpi_c2.metric("EMA 20", f"{curr_sym}{latest_snap.get('ema_fast_20') or 0:,.2f}")
+        kpi_c3.metric("EMA 50", f"{curr_sym}{latest_snap.get('ema_slow_50') or 0:,.2f}", delta=f"{latest_snap.get('ema_spread_pct') or 0:+.2f}%")
+        kpi_c4.metric("RSI 14", f"{latest_snap.get('rsi_14') or 0:.1f}", delta=latest_snap.get("rsi_regime"))
+        kpi_c5.metric("MACD Hist", f"{latest_snap.get('macd_histogram') or 0:+.3f}", delta=latest_snap.get("macd_state"))
+        kpi_c6.metric("VWAP", f"{curr_sym}{latest_snap.get('vwap') or 0:,.2f}", delta=f"{latest_snap.get('price_to_vwap_pct') or 0:+.2f}%")
+
+    if "TradingView" in chart_engine:
+        st.caption("⚡ Streaming live market prices with TradingView Advanced Charting, drawing tools, Fibonacci retracements & institutional dark theme.")
+        render_tradingview_chart(selected_symbol, timeframe=timeframe, height=680)
+    else:
         # Interactive Plotly Candlestick Chart
         fig = create_candlestick_with_indicators(candles_data, indicators_data, symbol=selected_symbol)
         if fig:
@@ -298,7 +317,109 @@ with tab_ai:
 
 
 # ==============================================================================
-# TAB 3: Positions & Execution Portal
+# TAB 3: Autonomous AI Auto-Trader
+# ==============================================================================
+with tab_autotrader:
+    st.markdown(f"### **🤖 Autonomous AI Auto-Trading Engine ({active_market} Market — {active_currency})**")
+    st.caption("Fully automated, hands-free order execution and position management powered by quantitative strategy confluence and Google Gemini AI.")
+
+    # Fetch Auto-Trader Status from Backend
+    bot_status = api_client.get_auto_trader_status()
+    bot_cfg = bot_status.get("config", {})
+    last_cycle = bot_status.get("last_cycle_at") or "Never"
+    is_bot_enabled = bot_cfg.get("enabled", False)
+
+    # Top KPI Banner
+    stat_c1, stat_c2, stat_c3, stat_c4 = st.columns(4)
+    stat_c1.metric("Bot Status", "🟢 ACTIVE" if is_bot_enabled else "⏸️ STANDBY")
+    stat_c2.metric("Min Confluence", f"{bot_cfg.get('min_confluence_score', 70)}/100")
+    stat_c3.metric("AI Gate", "🔒 REQUIRED" if bot_cfg.get("require_ai_approval", True) else "🔓 BYPASSED")
+    stat_c4.metric("Last Evaluation", last_cycle.split(".")[0] if "." in last_cycle else last_cycle)
+
+    st.divider()
+
+    # Bot Master Switch & Settings
+    col_ctrl_left, col_ctrl_right = st.columns([1, 1])
+
+    with col_ctrl_left:
+        st.markdown("#### **Execution Controls & Master Switch**")
+        new_enabled = st.toggle("Enable Autonomous Auto-Trading", value=is_bot_enabled, key="bot_master_toggle")
+        if new_enabled != is_bot_enabled:
+            api_client.update_auto_trader_config({"enabled": new_enabled})
+            st.rerun()
+
+        if is_bot_enabled:
+            st.success("🤖 AI Auto-Trader is **ACTIVE**. Orders will trigger automatically when high-confluence signals are detected.")
+        else:
+            st.info("⏸️ AI Auto-Trader is on **STANDBY**. You can run a single cycle manually using the button below.")
+
+        col_act1, col_act2 = st.columns(2)
+        with col_act1:
+            if st.button("⚡ Run AI Auto-Trade Cycle Now", type="primary", use_container_width=True):
+                with st.spinner(f"Scanning {active_market} universe, verifying AI gates, and managing positions..."):
+                    tick_res = api_client.run_auto_trader_tick(market=active_market, timeframe=timeframe)
+                if tick_res.get("error"):
+                    st.error(f"Auto-Trader cycle failed: {tick_res.get('message')}")
+                else:
+                    cycle = tick_res.get("cycle_result", {})
+                    n_exec = cycle.get("orders_executed_count", 0)
+                    n_closed = cycle.get("positions_closed_count", 0)
+                    st.success(f"Cycle completed! Executed: {n_exec} orders | Closed: {n_closed} positions.")
+                    st.rerun()
+        with col_act2:
+            if st.button("🗑️ Clear Decision Log", use_container_width=True):
+                api_client.clear_auto_trader_history()
+                st.rerun()
+
+    with col_ctrl_right:
+        st.markdown("#### **Risk & Strategy Parameters**")
+        with st.form("auto_trader_config_form"):
+            new_score = st.slider("Minimum Confluence Score Threshold", min_value=50, max_value=95, value=bot_cfg.get("min_confluence_score", 70), step=5)
+            new_ai_gate = st.checkbox("Require Gemini AI Confirmation Gate", value=bot_cfg.get("require_ai_approval", True))
+            new_rev_exit = st.checkbox("Auto-Exit Position on Strategy Reversal to SELL", value=bot_cfg.get("auto_exit_on_reversal", True))
+            new_enforce_hours = st.checkbox("Enforce Strict Exchange Session Hours", value=bot_cfg.get("enforce_market_hours", False))
+            new_max_pos = st.number_input("Maximum Concurrent Open Positions", min_value=1, max_value=10, value=bot_cfg.get("max_open_positions", 5))
+
+            save_cfg = st.form_submit_button("💾 Save Auto-Trader Settings", use_container_width=True)
+            if save_cfg:
+                cfg_payload = {
+                    "min_confluence_score": new_score,
+                    "require_ai_approval": new_ai_gate,
+                    "auto_exit_on_reversal": new_rev_exit,
+                    "enforce_market_hours": new_enforce_hours,
+                    "max_open_positions": new_max_pos,
+                }
+                api_client.update_auto_trader_config(cfg_payload)
+                st.success("Auto-Trader configuration saved successfully!")
+                st.rerun()
+
+    st.divider()
+
+    # Live Activity & Decision Audit Feed
+    st.markdown("#### **Real-Time AI Decision Feed & Audit Trail**")
+    decisions = bot_status.get("recent_decisions", [])
+    if not decisions:
+        st.info("No decisions logged yet. Click 'Run AI Auto-Trade Cycle Now' above to begin autonomous scanning.")
+    else:
+        st.dataframe(
+            decisions,
+            use_container_width=True,
+            column_config={
+                "timestamp": "Timestamp",
+                "symbol": "Symbol",
+                "market": "Market",
+                "action": "Action",
+                "score": st.column_config.NumberColumn("Score", format="%d/100"),
+                "executed": "Executed",
+                "order_id": "Order ID",
+                "pnl": st.column_config.NumberColumn(f"P&L ({active_currency})", format=f"{curr_sym}%.2f"),
+                "reason": "AI / Strategy Rationale",
+            },
+        )
+
+
+# ==============================================================================
+# TAB 4: Positions & Execution Portal
 # ==============================================================================
 with tab_positions:
     st.markdown(f"### **Virtual Portfolio Exposure & Position Management ({active_currency})**")
@@ -566,8 +687,10 @@ with tab_health:
     )
 
 
-# --- Background Live Polling Timer ---
+# --- Background Live Polling & Autonomous Trading Loop ---
 if auto_refresh:
     import time
+    if auto_trade_on_refresh and not kill_switch_active:
+        api_client.run_auto_trader_tick(market=active_market, timeframe=timeframe)
     time.sleep(refresh_rate)
     st.rerun()
