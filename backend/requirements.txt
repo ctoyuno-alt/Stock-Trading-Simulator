@@ -17,7 +17,7 @@ yfinance==0.2.51
 scipy==1.15.0
 
 # Google Gemini AI SDK
-google-genai==0.1.1
+google-genai>=0.8.0,<2.0.0
 
 # HTTP Clients & Resilience
 httpx==0.28.1
