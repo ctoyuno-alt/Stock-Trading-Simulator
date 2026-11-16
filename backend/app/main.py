@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from backend.app.core.config import get_settings
 from backend.app.core.logging import setup_logging
 from backend.app.core.market_schedule import get_current_ist_time, is_market_open
+from backend.app.api.market_data import router as market_data_router
 from database.init_db import init_db, verify_database_connection
 
 # Initialize structured logging
@@ -72,6 +73,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register API Routers
+app.include_router(market_data_router)
 
 
 # --- Response Schemas ---
