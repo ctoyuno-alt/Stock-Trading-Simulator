@@ -21,6 +21,7 @@ from backend.app.core.logging import setup_logging
 from backend.app.core.market_schedule import get_current_ist_time, is_market_open
 from backend.app.api.market_data import router as market_data_router
 from backend.app.api.indicators import router as indicators_router
+from backend.app.api.strategies import router as strategies_router
 from database.init_db import init_db, verify_database_connection
 
 # Initialize structured logging
@@ -78,6 +79,7 @@ app.add_middleware(
 # Register API Routers
 app.include_router(market_data_router)
 app.include_router(indicators_router)
+app.include_router(strategies_router)
 
 
 # --- Response Schemas ---
