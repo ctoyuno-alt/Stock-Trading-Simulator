@@ -112,6 +112,26 @@ class DashboardAPIClient:
     def get_metrics(self) -> Dict[str, Any]:
         return self._request("GET", "/api/v1/trading/metrics")
 
+    # --- Backtesting ---
+    def run_backtest(
+        self,
+        symbol: str,
+        timeframe: str = "1d",
+        period: str = "1y",
+        initial_capital_inr: float = 100000.0,
+        max_risk_per_trade: float = 0.01,
+        slippage_bps: float = 5.0,
+    ) -> Dict[str, Any]:
+        payload = {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "period": period,
+            "initial_capital_inr": initial_capital_inr,
+            "max_risk_per_trade": max_risk_per_trade,
+            "slippage_bps": slippage_bps,
+        }
+        return self._request("POST", "/api/v1/backtest/run", payload, timeout=30)
+
     def place_buy_order(
         self,
         symbol: str,

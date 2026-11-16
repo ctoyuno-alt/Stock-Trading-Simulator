@@ -24,6 +24,7 @@ from backend.app.api.indicators import router as indicators_router
 from backend.app.api.strategies import router as strategies_router
 from backend.app.api.ai_analysis import router as ai_analysis_router
 from backend.app.api.trading import router as trading_router
+from backend.app.api.backtest import router as backtest_router
 from database.init_db import init_db, verify_database_connection
 
 # Initialize structured logging
@@ -84,6 +85,7 @@ app.include_router(indicators_router)
 app.include_router(strategies_router)
 app.include_router(ai_analysis_router)
 app.include_router(trading_router)
+app.include_router(backtest_router)
 
 
 # --- Response Schemas ---

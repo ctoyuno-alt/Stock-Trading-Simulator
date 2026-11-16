@@ -118,11 +118,12 @@ st.markdown(
 
 
 # --- Dashboard Tabs ---
-tab_market, tab_ai, tab_positions, tab_ledger, tab_health = st.tabs([
+tab_market, tab_ai, tab_positions, tab_ledger, tab_backtest, tab_health = st.tabs([
     "📊 Market & Technicals",
     "🤖 AI & Strategy Signals",
     "💼 Positions & Execution",
     "📜 Trade Ledger & Performance",
+    "🧪 Historical Backtest",
     "🛡️ System Health & Freshness",
 ])
 
@@ -375,7 +376,85 @@ with tab_ledger:
 
 
 # ==============================================================================
-# TAB 5: System Health & Freshness
+# TAB 5: Historical Backtesting Engine
+# ==============================================================================
+with tab_backtest:
+    st.markdown("### **Walk-Forward Historical Strategy Backtesting**")
+    st.caption("Walk-forward simulation with zero look-ahead bias, accounting for Indian delivery frictions (STT, Brokerage, GST, Stamp Duty) and 5 bps adverse slippage.")
+
+    with st.form("backtest_form"):
+        bt_c1, bt_c2, bt_c3, bt_c4 = st.columns(4)
+        bt_symbol = bt_c1.selectbox("Backtest Instrument", options=universe_symbols, index=universe_symbols.index(selected_symbol) if selected_symbol in universe_symbols else 0)
+        bt_period = bt_c2.selectbox("Lookback Window", options=["6mo", "1y", "2y"], index=1)
+        bt_capital = bt_c3.number_input("Starting Capital (INR)", value=100000.0, step=10000.0)
+        bt_risk = bt_c4.number_input("Risk Per Trade (Fraction)", value=0.01, min_value=0.005, max_value=0.05, step=0.005, format="%.3f")
+
+        bt_submit = st.form_submit_button("▶️ Run Quantitative Backtest", use_container_width=True)
+
+    if bt_submit or st.session_state.get(f"bt_done_{selected_symbol}"):
+        with st.spinner(f"Executing bar-by-bar simulation for {bt_symbol} ({bt_period})..."):
+            bt_res = api_client.run_backtest(
+                symbol=bt_symbol,
+                timeframe="1d",
+                period=bt_period,
+                initial_capital_inr=bt_capital,
+                max_risk_per_trade=bt_risk,
+                slippage_bps=5.0,
+            )
+
+        if bt_res.get("error"):
+            st.error(f"Backtest execution failed: {bt_res.get('message')}")
+        else:
+            st.session_state[f"bt_done_{selected_symbol}"] = True
+            metrics = bt_res.get("metrics", {})
+            st.markdown(f"#### **Backtest Results: {bt_res.get('symbol')} ({bt_res.get('total_bars')} bars, {bt_res.get('strategy_name')})**")
+
+            res_c1, res_c2, res_c3, res_c4, res_c5, res_c6 = st.columns(6)
+            res_c1.metric("Total Return", f"{bt_res.get('total_return_pct'):+.2f}%", f"₹{bt_res.get('total_net_profit_inr'):+,.2f}")
+            res_c2.metric("Win Rate", f"{metrics.get('win_rate_pct', 0.0):.1f}%", f"{metrics.get('winning_trades', 0)}W / {metrics.get('losing_trades', 0)}L")
+            res_c3.metric("Profit Factor", f"{metrics.get('profit_factor', 0.0):.2f}")
+            res_c4.metric("Friction Paid", f"₹{metrics.get('total_charges_paid_inr', 0.0):,.2f}")
+            res_c5.metric("Max Drawdown", f"{metrics.get('max_drawdown_pct', 0.0):.2f}%", f"-₹{metrics.get('max_drawdown_inr', 0.0):,.2f}")
+            res_c6.metric("Sharpe Ratio", f"{metrics.get('sharpe_ratio') or 'N/A'}")
+
+            # Plot Equity Curve from backtest
+            eq_curve_raw = bt_res.get("equity_curve", [])
+            if eq_curve_raw:
+                eq_ts = [pt["timestamp"] for pt in eq_curve_raw]
+                eq_vals = [pt["equity"] for pt in eq_curve_raw]
+                bt_fig = create_equity_curve_chart(eq_ts, eq_vals, initial_capital=bt_capital)
+                if bt_fig:
+                    st.plotly_chart(bt_fig, use_container_width=True)
+
+            # Trades Table
+            trades_list = bt_res.get("trades", [])
+            st.markdown(f"##### **Closed Trades Log ({len(trades_list)} Total Trades)**")
+            if not trades_list:
+                st.info("No trades triggered under strict strategy confluence rules during this window.")
+            else:
+                st.dataframe(
+                    trades_list,
+                    use_container_width=True,
+                    column_config={
+                        "trade_id": "#",
+                        "symbol": "Symbol",
+                        "side": "Side",
+                        "quantity": "Qty",
+                        "entry_price": st.column_config.NumberColumn("Entry (INR)", format="₹%.2f"),
+                        "exit_price": st.column_config.NumberColumn("Exit (INR)", format="₹%.2f"),
+                        "exit_reason": "Exit Reason",
+                        "net_pnl_inr": st.column_config.NumberColumn("Net P&L (INR)", format="₹%.2f"),
+                        "total_charges_inr": st.column_config.NumberColumn("Charges (INR)", format="₹%.2f"),
+                        "return_pct": st.column_config.NumberColumn("Return %", format="%.2f%%"),
+                        "holding_period_bars": "Holding Bars",
+                        "entry_time": "Entry Date",
+                        "exit_time": "Exit Date",
+                    },
+                )
+
+
+# ==============================================================================
+# TAB 6: System Health & Freshness
 # ==============================================================================
 with tab_health:
     st.markdown("### **System Infrastructure, Market Calendar & Compliance**")
