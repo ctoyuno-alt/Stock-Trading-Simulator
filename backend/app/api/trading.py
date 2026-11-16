@@ -249,7 +249,7 @@ async def get_portfolio(
         "total_realized_pnl_inr": float(realized),
         "total_unrealized_pnl_inr": float(unrealized),
         "total_pnl_inr": float(realized + unrealized),
-        "return_on_initial_capital_pct": round(float((account.equity_inr - account.initial_capital_inr) / account.initial_capital_inr * 100.0), 2),
+        "return_on_initial_capital_pct": round(float((account.equity_inr - account.initial_capital_inr) / account.initial_capital_inr) * 100.0, 2) if account.initial_capital_inr else 0.0,
     }
 
 
