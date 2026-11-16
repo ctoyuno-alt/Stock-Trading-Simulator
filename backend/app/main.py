@@ -22,6 +22,7 @@ from backend.app.core.market_schedule import get_current_ist_time, is_market_ope
 from backend.app.api.market_data import router as market_data_router
 from backend.app.api.indicators import router as indicators_router
 from backend.app.api.strategies import router as strategies_router
+from backend.app.api.ai_analysis import router as ai_analysis_router
 from database.init_db import init_db, verify_database_connection
 
 # Initialize structured logging
@@ -80,6 +81,7 @@ app.add_middleware(
 app.include_router(market_data_router)
 app.include_router(indicators_router)
 app.include_router(strategies_router)
+app.include_router(ai_analysis_router)
 
 
 # --- Response Schemas ---
