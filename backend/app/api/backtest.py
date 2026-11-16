@@ -25,7 +25,7 @@ market_provider = YFinanceProvider()
 
 class BacktestRequest(BaseModel):
     symbol: str = Field(description="NSE Ticker symbol (e.g. RELIANCE, TCS)")
-    timeframe: str = Field(default="1d", regex="^(1d|1h|15m)$")
+    timeframe: str = Field(default="1d", pattern="^(1d|1h|15m)$")
     period: str = Field(default="1y", description="Lookback window (e.g. 6mo, 1y, 2y)")
     initial_capital_inr: float = Field(default=100000.0, gt=0, description="Virtual capital in INR")
     max_risk_per_trade: float = Field(default=0.01, gt=0, le=0.05, description="1% risk budget (0.01)")

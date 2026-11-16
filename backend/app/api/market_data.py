@@ -50,7 +50,7 @@ async def get_universe() -> List[Dict[str, Any]]:
 @router.get("/candles/{symbol}", summary="Fetch OHLCV Candles")
 async def get_candles(
     symbol: str,
-    timeframe: str = Query("1d", regex="^(1d|1h|15m|5m)$"),
+    timeframe: str = Query("1d", pattern="^(1d|1h|15m|5m)$"),
     period: str = Query("6mo", description="Historical period (e.g., 1mo, 3mo, 6mo, 1y)"),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:

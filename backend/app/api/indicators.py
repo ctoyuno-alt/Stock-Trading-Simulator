@@ -23,7 +23,7 @@ market_provider = YFinanceProvider()
 @router.get("/{symbol}", summary="Fetch Technical Indicators Time Series & Snapshot")
 async def get_indicators(
     symbol: str,
-    timeframe: str = Query("1d", regex="^(1d|1h|15m|5m)$"),
+    timeframe: str = Query("1d", pattern="^(1d|1h|15m|5m)$"),
     include_series: bool = Query(True, description="Whether to include full historical time series"),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
@@ -69,7 +69,7 @@ async def get_indicators(
 @router.get("/snapshot/{symbol}", summary="Fetch Latest Indicator Snapshot")
 async def get_indicator_snapshot(
     symbol: str,
-    timeframe: str = Query("1d", regex="^(1d|1h|15m|5m)$"),
+    timeframe: str = Query("1d", pattern="^(1d|1h|15m|5m)$"),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """

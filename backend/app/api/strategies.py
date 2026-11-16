@@ -24,7 +24,7 @@ market_provider = YFinanceProvider()
 @router.get("/signal/{symbol}", summary="Evaluate Strategy Signal for Symbol")
 async def get_symbol_signal(
     symbol: str,
-    timeframe: str = Query("1d", regex="^(1d|1h|15m|5m)$"),
+    timeframe: str = Query("1d", pattern="^(1d|1h|15m|5m)$"),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """
@@ -53,7 +53,7 @@ async def get_symbol_signal(
 
 @router.get("/signals", summary="Scan Active Universe for Signals")
 async def scan_universe_signals(
-    timeframe: str = Query("1d", regex="^(1d|1h|15m|5m)$"),
+    timeframe: str = Query("1d", pattern="^(1d|1h|15m|5m)$"),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """

@@ -134,7 +134,7 @@ async def close_position_route(
 
 @router.get("/positions", summary="List Virtual Positions")
 async def list_positions(
-    status_filter: Optional[str] = Query(None, regex="^(OPEN|CLOSED)$"),
+    status_filter: Optional[str] = Query(None, pattern="^(OPEN|CLOSED)$"),
     db: AsyncSession = Depends(get_db),
 ) -> List[Dict[str, Any]]:
     """Lists open and closed virtual positions with mark-to-market and P&L metrics."""
