@@ -1,0 +1,36 @@
+# FastAPI & ASGI Web Server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# Database & ORM
+SQLAlchemy==2.0.36
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+alembic==1.14.0
+
+# Quantitative Data Analysis & Indicators
+pandas==2.2.3
+numpy==2.2.1
+yfinance==0.2.51
+scipy==1.15.0
+
+# Google Gemini AI SDK
+google-genai==0.1.1
+
+# HTTP Clients & Resilience
+httpx==0.28.1
+tenacity==9.0.0
+
+# Timezones & Calendars
+pytz==2024.2
+python-dateutil==2.9.0.post0
+
+# Logging & Monitoring
+python-json-logger==3.2.1
+
+# Testing & Quality Assurance
+pytest==8.3.4
+pytest-asyncio==0.25.1
+pytest-cov==6.0.0

@@ -1,0 +1,48 @@
+# Python Bytecode and Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment Variables & Secrets (CRITICAL: Never commit credentials)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+
+# Database & Data Persistence
+postgres-data/
+*.sqlite
+*.sqlite3
+*.db
+data/cache/
+data/historical/
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Docker artifacts
+.docker/
+
+# IDE & OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
