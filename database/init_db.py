@@ -30,33 +30,61 @@ async def init_db() -> None:
 
     session_factory = get_sessionmaker()
     async with session_factory() as session:
-        # Check if default account exists
-        result = await session.execute(
+        # Check if default INR account exists
+        result_inr = await session.execute(
             select(AccountModel).where(AccountModel.account_name == "Primary Paper Account")
         )
-        account = result.scalar_one_or_none()
+        account_inr = result_inr.scalar_one_or_none()
 
-        if account is None:
+        if account_inr is None:
             initial_capital = settings.INITIAL_VIRTUAL_CAPITAL_INR
-            account = AccountModel(
+            account_inr = AccountModel(
                 account_name="Primary Paper Account",
                 initial_capital_inr=initial_capital,
                 cash_balance_inr=initial_capital,
                 equity_inr=initial_capital,
-                currency=settings.CURRENCY,
+                currency="INR",
                 is_active=True,
             )
-            session.add(account)
-            await session.commit()
+            session.add(account_inr)
             logger.info(
-                "Created primary paper trading account",
-                extra={"extra_context": {"initial_capital_inr": str(initial_capital), "currency": settings.CURRENCY}}
+                "Created primary INR paper trading account",
+                extra={"extra_context": {"initial_capital_inr": str(initial_capital), "currency": "INR"}}
             )
         else:
             logger.info(
-                "Primary paper trading account verified",
-                extra={"extra_context": {"equity_inr": str(account.equity_inr)}}
+                "Primary INR paper trading account verified",
+                extra={"extra_context": {"equity_inr": str(account_inr.equity_inr)}}
             )
+
+        # Check if default USD account exists
+        result_usd = await session.execute(
+            select(AccountModel).where(AccountModel.account_name == "Primary USD Paper Account")
+        )
+        account_usd = result_usd.scalar_one_or_none()
+
+        if account_usd is None:
+            initial_usd = Decimal("25000.00")
+            account_usd = AccountModel(
+                account_name="Primary USD Paper Account",
+                initial_capital_inr=initial_usd,
+                cash_balance_inr=initial_usd,
+                equity_inr=initial_usd,
+                currency="USD",
+                is_active=True,
+            )
+            session.add(account_usd)
+            logger.info(
+                "Created primary USD paper trading account",
+                extra={"extra_context": {"initial_capital_usd": str(initial_usd), "currency": "USD"}}
+            )
+        else:
+            logger.info(
+                "Primary USD paper trading account verified",
+                extra={"extra_context": {"equity_usd": str(account_usd.equity_inr)}}
+            )
+
+        await session.commit()
 
 
 async def verify_database_connection() -> Tuple[bool, float, str]:

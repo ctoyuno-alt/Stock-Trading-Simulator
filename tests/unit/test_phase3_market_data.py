@@ -24,7 +24,7 @@ class TestPhase3MarketData(unittest.TestCase):
 
     def test_universe_symbols_and_tick_sizes(self):
         """Verify the 10 liquid NSE stocks are configured with standard ₹0.05 tick size."""
-        symbols = self.universe.get_symbols()
+        symbols = self.universe.get_symbols("IN")
         self.assertEqual(len(symbols), 10)
         expected = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "SBIN", "ITC", "LT", "TATAMOTORS"]
         for sym in expected:

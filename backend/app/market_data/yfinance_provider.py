@@ -20,6 +20,20 @@ from backend.app.market_data.universe import universe_manager
 
 logger = logging.getLogger(__name__)
 IST_ZONE = ZoneInfo("Asia/Kolkata")
+ET_ZONE = ZoneInfo("America/New_York")
+
+US_DEFAULT_PRICES: dict[str, Decimal] = {
+    "AAPL": Decimal("225.00"),
+    "MSFT": Decimal("420.00"),
+    "NVDA": Decimal("135.00"),
+    "AMZN": Decimal("195.00"),
+    "GOOGL": Decimal("175.00"),
+    "META": Decimal("570.00"),
+    "TSLA": Decimal("245.00"),
+    "BRK-B": Decimal("450.00"),
+    "JPM": Decimal("225.00"),
+    "V": Decimal("285.00"),
+}
 
 
 class YFinanceProvider(MarketDataProvider):
@@ -148,8 +162,16 @@ class YFinanceProvider(MarketDataProvider):
         clean_symbol = universe_manager.normalize_symbol(symbol)
         candles: List[Candle] = []
 
-        base_dt = datetime(2026, 1, 1, 9, 15, tzinfo=IST_ZONE)
-        current_close = start_price
+        is_us = universe_manager.get_market_for_symbol(clean_symbol) == "US"
+        if is_us:
+            base_dt = datetime(2026, 1, 1, 9, 30, tzinfo=ET_ZONE)
+            if start_price == Decimal("2500.00"):
+                current_close = US_DEFAULT_PRICES.get(clean_symbol, Decimal("200.00"))
+            else:
+                current_close = start_price
+        else:
+            base_dt = datetime(2026, 1, 1, 9, 15, tzinfo=IST_ZONE)
+            current_close = start_price
 
         # Deterministic pseudo-random seed based on symbol
         seed_val = sum(ord(c) for c in clean_symbol)

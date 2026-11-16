@@ -28,21 +28,23 @@ class PaperTradingEngine:
     """Asynchronous database-backed paper trading execution engine."""
 
     @staticmethod
-    async def get_or_create_account(session: Any) -> AccountModel:
-        """Retrieves the default primary paper trading account."""
+    async def get_or_create_account(session: Any, currency: str = "INR") -> AccountModel:
+        """Retrieves or creates the paper trading account for the specified currency (INR or USD)."""
         from sqlalchemy import select
+        target_curr = currency.upper()
+        account_name = "Primary USD Paper Account" if target_curr == "USD" else "Primary Paper Account"
         result = await session.execute(
-            select(AccountModel).where(AccountModel.account_name == "Primary Paper Account")
+            select(AccountModel).where(AccountModel.account_name == account_name)
         )
         account = result.scalar_one_or_none()
         if not account:
-            initial = settings.INITIAL_VIRTUAL_CAPITAL_INR
+            initial = Decimal("25000.00") if target_curr == "USD" else settings.INITIAL_VIRTUAL_CAPITAL_INR
             account = AccountModel(
-                account_name="Primary Paper Account",
+                account_name=account_name,
                 initial_capital_inr=initial,
                 cash_balance_inr=initial,
                 equity_inr=initial,
-                currency=settings.CURRENCY,
+                currency=target_curr,
                 is_active=True,
             )
             session.add(account)
@@ -69,7 +71,12 @@ class PaperTradingEngine:
         - Opens a new position in the ledger.
         """
         from sqlalchemy import select
-        account = await PaperTradingEngine.get_or_create_account(session)
+        from backend.app.market_data.universe import universe_manager
+        from trading.charges import calculate_market_trade_friction
+
+        target_market = universe_manager.get_market_for_symbol(symbol)
+        target_currency = "USD" if target_market == "US" else "INR"
+        account = await PaperTradingEngine.get_or_create_account(session, currency=target_currency)
 
         # 1. Gather active positions for risk checks
         pos_result = await session.execute(
@@ -107,39 +114,40 @@ class PaperTradingEngine:
             open_positions_count=len(open_positions),
             existing_symbols=existing_symbols,
             enforce_market_hours=enforce_market_hours,
+            market=target_market,
         )
         if not risk_check.is_valid:
             rejection_detail = "; ".join(risk_check.rejection_reasons)
             logger.warning(f"Order rejected for {symbol}: {rejection_detail}")
             return False, None, rejection_detail
 
-        # 4. Calculate execution friction and Indian taxes
-        friction = calculate_trade_friction(
+        # 4. Calculate execution friction and charges (NSE or US)
+        friction = calculate_market_trade_friction(
             symbol=symbol,
             side="BUY",
             quantity=final_quantity,
             price=price,
+            market=target_market,
             slippage_bps=settings.SLIPPAGE_BPS,
-            brokerage_flat_inr=settings.BROKERAGE_PER_ORDER_INR,
-            stt_rate=settings.STT_TAX_RATE,
-            exchange_rate=settings.EXCHANGE_TURNOVER_RATE,
-            sebi_rate=settings.SEBI_CHARGES_RATE,
-            stamp_duty_rate=settings.STAMP_DUTY_RATE,
-            gst_rate=settings.GST_RATE,
         )
+
+        curr_symbol = "$" if target_currency == "USD" else "₹"
 
         # 5. Check cash sufficiency
         if account.cash_balance_inr < friction.net_cash_impact_inr:
-            return False, None, f"Insufficient cash (Requires ₹{friction.net_cash_impact_inr}, Available ₹{account.cash_balance_inr})"
+            return False, None, f"Insufficient cash (Requires {curr_symbol}{friction.net_cash_impact_inr}, Available {curr_symbol}{account.cash_balance_inr})"
 
         # 6. Deduct cash & Create Position
         account.cash_balance_inr -= friction.net_cash_impact_inr
         account.updated_at = datetime.now(timezone.utc)
 
+        inst = universe_manager.get_instrument(symbol)
+        pos_exchange = inst.exchange if inst else ("NASDAQ" if target_market == "US" else settings.PRIMARY_EXCHANGE)
+
         position = PositionModel(
             account_id=account.id,
             symbol=symbol.upper(),
-            exchange=settings.PRIMARY_EXCHANGE,
+            exchange=pos_exchange,
             quantity=final_quantity,
             average_entry_price=friction.executed_price,
             current_price=friction.executed_price,
@@ -161,7 +169,7 @@ class PaperTradingEngine:
             position_id=position.id,
             client_order_id=client_order_id,
             symbol=symbol.upper(),
-            exchange=settings.PRIMARY_EXCHANGE,
+            exchange=pos_exchange,
             side=OrderSide.BUY,
             quantity=final_quantity,
             requested_price=round_inr(price),
@@ -223,21 +231,23 @@ class PaperTradingEngine:
         if not position:
             return False, None, f"Open position #{position_id} not found."
 
-        account = await PaperTradingEngine.get_or_create_account(session)
+        account = await session.get(AccountModel, position.account_id)
+        if not account:
+            account = await PaperTradingEngine.get_or_create_account(session)
+
+        from backend.app.market_data.universe import universe_manager
+        from trading.charges import calculate_market_trade_friction
+
+        target_market = universe_manager.get_market_for_symbol(position.symbol)
 
         # 1. Calculate exit friction
-        friction = calculate_trade_friction(
+        friction = calculate_market_trade_friction(
             symbol=position.symbol,
             side="SELL",
             quantity=position.quantity,
             price=exit_price,
+            market=target_market,
             slippage_bps=settings.SLIPPAGE_BPS,
-            brokerage_flat_inr=settings.BROKERAGE_PER_ORDER_INR,
-            stt_rate=settings.STT_TAX_RATE,
-            exchange_rate=settings.EXCHANGE_TURNOVER_RATE,
-            sebi_rate=settings.SEBI_CHARGES_RATE,
-            stamp_duty_rate=settings.STAMP_DUTY_RATE,
-            gst_rate=settings.GST_RATE,
         )
 
         # 2. Credit cash (Net proceeds from sell)
@@ -264,7 +274,7 @@ class PaperTradingEngine:
             position_id=position.id,
             client_order_id=client_order_id,
             symbol=position.symbol,
-            exchange=settings.PRIMARY_EXCHANGE,
+            exchange=position.exchange,
             side=OrderSide.SELL,
             quantity=position.quantity,
             requested_price=round_inr(exit_price),

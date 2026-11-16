@@ -54,12 +54,13 @@ async def get_symbol_signal(
 @router.get("/signals", summary="Scan Active Universe for Signals")
 async def scan_universe_signals(
     timeframe: str = Query("1d", pattern="^(1d|1h|15m|5m)$"),
+    market: Optional[str] = Query(None, pattern="^(IN|US)$", description="Optional market filter: IN or US"),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """
-    Scans the entire 10-stock liquid NSE universe and returns active signals.
+    Scans the tradable universe (NSE or US mega-caps) and returns active signals.
     """
-    symbols = universe_manager.get_symbols()
+    symbols = universe_manager.get_symbols(market=market)
     buy_signals = []
     sell_signals = []
     hold_signals = []

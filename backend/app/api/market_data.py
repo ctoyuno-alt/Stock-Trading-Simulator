@@ -31,6 +31,7 @@ class InstrumentResponse(BaseModel):
     tick_size: float
     lot_size: int
     currency: str
+    market: str = "IN"
     is_active: bool
 
 
@@ -41,9 +42,11 @@ class SyncRequest(BaseModel):
 
 
 @router.get("/universe", response_model=List[InstrumentResponse], summary="List Tradable Universe")
-async def get_universe() -> List[Dict[str, Any]]:
-    """Returns the tracked NSE liquid large-cap universe with metadata."""
-    instruments = universe_manager.list_instruments()
+async def get_universe(
+    market: Optional[str] = Query(None, pattern="^(IN|US)$", description="Optional market filter: IN or US"),
+) -> List[Dict[str, Any]]:
+    """Returns the tracked universe of instruments (NSE or US mega-caps) with metadata."""
+    instruments = universe_manager.list_instruments(market=market)
     return [inst.to_dict() for inst in instruments]
 
 

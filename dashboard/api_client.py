@@ -74,8 +74,9 @@ class DashboardAPIClient:
         return self._request("POST", "/api/v1/system/kill-switch", {"activate": activate, "reason": reason})
 
     # --- Market Data & Universe ---
-    def get_universe(self) -> List[Dict[str, Any]]:
-        resp = self._request("GET", "/api/v1/market-data/universe")
+    def get_universe(self, market: Optional[str] = None) -> List[Dict[str, Any]]:
+        path = f"/api/v1/market-data/universe?market={market}" if market else "/api/v1/market-data/universe"
+        resp = self._request("GET", path)
         return resp if isinstance(resp, list) else []
 
     def get_candles(self, symbol: str, timeframe: str = "1d", period: str = "6mo") -> Dict[str, Any]:
@@ -89,28 +90,35 @@ class DashboardAPIClient:
     def get_signal(self, symbol: str, timeframe: str = "1d") -> Dict[str, Any]:
         return self._request("GET", f"/api/v1/strategies/signal/{symbol}?timeframe={timeframe}")
 
-    def scan_signals(self, timeframe: str = "1d") -> Dict[str, Any]:
-        return self._request("GET", f"/api/v1/strategies/signals?timeframe={timeframe}")
+    def scan_signals(self, timeframe: str = "1d", market: Optional[str] = None) -> Dict[str, Any]:
+        path = f"/api/v1/strategies/signals?timeframe={timeframe}&market={market}" if market else f"/api/v1/strategies/signals?timeframe={timeframe}"
+        return self._request("GET", path)
 
     # --- AI Analysis ---
     def get_ai_analysis(self, symbol: str, timeframe: str = "1d") -> Dict[str, Any]:
         return self._request("POST", f"/api/v1/ai/analyze/{symbol}", {"timeframe": timeframe}, timeout=20)
 
     # --- Trading & Portfolio ---
-    def get_portfolio(self) -> Dict[str, Any]:
-        return self._request("GET", "/api/v1/trading/portfolio")
+    def get_portfolio(self, currency: str = "INR") -> Dict[str, Any]:
+        return self._request("GET", f"/api/v1/trading/portfolio?currency={currency}")
 
-    def get_positions(self, status_filter: Optional[str] = None) -> List[Dict[str, Any]]:
-        path = f"/api/v1/trading/positions?status_filter={status_filter}" if status_filter else "/api/v1/trading/positions"
-        resp = self._request("GET", path)
+    def get_positions(self, status_filter: Optional[str] = None, currency: Optional[str] = None) -> List[Dict[str, Any]]:
+        params = []
+        if status_filter:
+            params.append(f"status_filter={status_filter}")
+        if currency:
+            params.append(f"currency={currency}")
+        query = f"?{'&'.join(params)}" if params else ""
+        resp = self._request("GET", f"/api/v1/trading/positions{query}")
         return resp if isinstance(resp, list) else []
 
-    def get_orders(self, limit: int = 50) -> List[Dict[str, Any]]:
-        resp = self._request("GET", f"/api/v1/trading/orders?limit={limit}")
+    def get_orders(self, limit: int = 50, currency: Optional[str] = None) -> List[Dict[str, Any]]:
+        query = f"?limit={limit}&currency={currency}" if currency else f"?limit={limit}"
+        resp = self._request("GET", f"/api/v1/trading/orders{query}")
         return resp if isinstance(resp, list) else []
 
-    def get_metrics(self) -> Dict[str, Any]:
-        return self._request("GET", "/api/v1/trading/metrics")
+    def get_metrics(self, currency: str = "INR") -> Dict[str, Any]:
+        return self._request("GET", f"/api/v1/trading/metrics?currency={currency}")
 
     # --- Backtesting ---
     def run_backtest(

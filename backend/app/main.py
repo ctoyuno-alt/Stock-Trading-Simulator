@@ -18,7 +18,12 @@ from pydantic import BaseModel
 
 from backend.app.core.config import get_settings
 from backend.app.core.logging import setup_logging
-from backend.app.core.market_schedule import get_current_ist_time, is_market_open
+from backend.app.core.market_schedule import (
+    get_current_ist_time,
+    get_current_et_time,
+    is_market_open,
+    is_us_market_open,
+)
 from backend.app.api.market_data import router as market_data_router
 from backend.app.api.indicators import router as indicators_router
 from backend.app.api.strategies import router as strategies_router
@@ -185,18 +190,24 @@ async def health_ready() -> HealthReadyResponse:
 )
 async def system_status() -> Dict[str, Any]:
     """Returns exchange session status, virtual capital, universe, and risk budgets."""
-    is_open, market_reason = is_market_open()
+    is_open_in, market_reason_in = is_market_open(market="IN")
+    is_open_us, market_reason_us = is_us_market_open()
     ist_now = get_current_ist_time().strftime("%Y-%m-%d %H:%M:%S IST")
+    et_now = get_current_et_time().strftime("%Y-%m-%d %H:%M:%S ET")
 
     return {
         "service": "AI Paper Trading Simulator",
         "primary_exchange": settings.PRIMARY_EXCHANGE,
         "secondary_exchange": settings.SECONDARY_EXCHANGE,
         "ist_time": ist_now,
-        "market_open": is_open,
-        "market_session_details": market_reason,
+        "et_time": et_now,
+        "market_open": is_open_in,
+        "market_session_details": market_reason_in,
+        "us_market_open": is_open_us,
+        "us_market_session_details": market_reason_us,
         "virtual_capital_currency": settings.CURRENCY,
         "initial_virtual_capital_inr": float(settings.INITIAL_VIRTUAL_CAPITAL_INR),
+        "initial_virtual_capital_usd": 25000.0,
         "trading_universe": settings.universe_list,
         "universe_size": len(settings.universe_list),
         "risk_management": {

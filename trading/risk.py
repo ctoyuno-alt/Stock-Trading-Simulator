@@ -149,11 +149,12 @@ def validate_order_risk(
     open_positions_count: int,
     existing_symbols: Set[str],
     enforce_market_hours: bool = True,
+    market: Optional[str] = None,
 ) -> RiskValidationResult:
     """
     Validates comprehensive pre-trade risk constraints:
     - Kill switch status.
-    - Market session & holiday check.
+    - Market session & holiday check (NSE or US).
     - Concurrent position limit.
     - Duplicate position prevention.
     - Minimum stop loss distance.
@@ -166,7 +167,9 @@ def validate_order_risk(
 
     # 2. Market Session Hours & Holidays
     if enforce_market_hours:
-        is_open, reason = is_market_open()
+        from backend.app.market_data.universe import universe_manager
+        target_market = (market or universe_manager.get_market_for_symbol(symbol)).upper()
+        is_open, reason = is_market_open(market=target_market)
         if not is_open:
             rejections.append(f"Order rejected: Outside market hours ({reason}).")
 

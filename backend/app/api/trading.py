@@ -135,11 +135,15 @@ async def close_position_route(
 @router.get("/positions", summary="List Virtual Positions")
 async def list_positions(
     status_filter: Optional[str] = Query(None, pattern="^(OPEN|CLOSED)$"),
+    currency: Optional[str] = Query(None, pattern="^(INR|USD)$"),
     db: AsyncSession = Depends(get_db),
 ) -> List[Dict[str, Any]]:
     """Lists open and closed virtual positions with mark-to-market and P&L metrics."""
-    account = await PaperTradingEngine.get_or_create_account(db)
-    stmt = select(PositionModel).where(PositionModel.account_id == account.id)
+    if currency:
+        account = await PaperTradingEngine.get_or_create_account(db, currency=currency)
+        stmt = select(PositionModel).where(PositionModel.account_id == account.id)
+    else:
+        stmt = select(PositionModel)
 
     if status_filter:
         pos_status = PositionStatus.OPEN if status_filter == "OPEN" else PositionStatus.CLOSED
@@ -173,16 +177,17 @@ async def list_positions(
 @router.get("/orders", summary="List Order History")
 async def list_orders(
     limit: int = Query(50, le=200),
+    currency: Optional[str] = Query(None, pattern="^(INR|USD)$"),
     db: AsyncSession = Depends(get_db),
 ) -> List[Dict[str, Any]]:
     """Returns the chronological audit trail of all executed virtual paper orders."""
-    account = await PaperTradingEngine.get_or_create_account(db)
-    stmt = (
-        select(OrderModel)
-        .where(OrderModel.account_id == account.id)
-        .order_by(OrderModel.created_at.desc())
-        .limit(limit)
-    )
+    if currency:
+        account = await PaperTradingEngine.get_or_create_account(db, currency=currency)
+        stmt = select(OrderModel).where(OrderModel.account_id == account.id)
+    else:
+        stmt = select(OrderModel)
+
+    stmt = stmt.order_by(OrderModel.created_at.desc()).limit(limit)
     result = await db.execute(stmt)
     orders = result.scalars().all()
 
@@ -211,10 +216,11 @@ async def list_orders(
 
 @router.get("/portfolio", summary="Get Portfolio Balance & State")
 async def get_portfolio(
+    currency: str = Query("INR", pattern="^(INR|USD)$"),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Returns real-time account purchasing power, total equity, and open exposure."""
-    account = await PaperTradingEngine.get_or_create_account(db)
+    account = await PaperTradingEngine.get_or_create_account(db, currency=currency)
     await PaperTradingEngine.update_portfolio_equity(db, account)
 
     # Count open positions
@@ -255,13 +261,14 @@ async def get_portfolio(
 
 @router.get("/metrics", summary="Get Institutional Performance Metrics")
 async def get_performance_metrics_route(
+    currency: str = Query("INR", pattern="^(INR|USD)$"),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """
     Computes Win Rate, Profit Factor, Maximum Drawdown, and Sharpe Ratio
     across trade ledger and portfolio snapshots.
     """
-    account = await PaperTradingEngine.get_or_create_account(db)
+    account = await PaperTradingEngine.get_or_create_account(db, currency=currency)
 
     # Fetch closed positions
     closed_res = await db.execute(

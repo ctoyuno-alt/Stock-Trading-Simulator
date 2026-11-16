@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from backend.app.market_data.base import Candle
 from strategies.base import BaseStrategy, SignalAction
 from strategies.swing_strategy import EMAMACDSwingStrategy
-from trading.charges import calculate_trade_friction, round_inr
+from trading.charges import calculate_market_trade_friction, round_inr
 from trading.metrics import PerformanceMetrics, calculate_performance_metrics
 from trading.risk import calculate_position_size
 
@@ -182,7 +182,7 @@ class BacktestEngine:
                 if exit_triggered:
                     trade_counter += 1
                     # Compute exit friction
-                    exit_friction = calculate_trade_friction(
+                    exit_friction = calculate_market_trade_friction(
                         symbol=symbol,
                         side="SELL",
                         quantity=pos["quantity"],
@@ -242,7 +242,7 @@ class BacktestEngine:
                     )
 
                     if sizing.is_approved and sizing.quantity > 0:
-                        buy_friction = calculate_trade_friction(
+                        buy_friction = calculate_market_trade_friction(
                             symbol=symbol,
                             side="BUY",
                             quantity=sizing.quantity,
@@ -266,7 +266,7 @@ class BacktestEngine:
                 elif active_position is not None and signal.action == SignalAction.SELL:
                     pos = active_position
                     trade_counter += 1
-                    exit_friction = calculate_trade_friction(
+                    exit_friction = calculate_market_trade_friction(
                         symbol=symbol,
                         side="SELL",
                         quantity=pos["quantity"],
@@ -324,7 +324,7 @@ class BacktestEngine:
             pos = active_position
             final_candle = candles[-1]
             trade_counter += 1
-            exit_friction = calculate_trade_friction(
+            exit_friction = calculate_market_trade_friction(
                 symbol=symbol,
                 side="SELL",
                 quantity=pos["quantity"],
