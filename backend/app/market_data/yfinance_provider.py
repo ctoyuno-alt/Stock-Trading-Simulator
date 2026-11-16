@@ -75,6 +75,14 @@ class YFinanceProvider(MarketDataProvider):
             interval_map = {"1d": "1d", "1h": "1h", "15m": "15m", "5m": "5m"}
             interval = interval_map.get(timeframe.lower(), "1d")
 
+            # Clamp period for intraday intervals to avoid Yahoo Finance 60-day limit errors
+            if interval in ("15m", "5m") and (not period or period in ("6mo", "1y", "2y", "5y", "max")):
+                effective_period = "1mo"
+            elif interval == "1h" and (not period or period in ("1y", "2y", "5y", "max")):
+                effective_period = "3mo"
+            else:
+                effective_period = period or "1y"
+
             # Fetch DataFrame
             if start_date and end_date:
                 df = ticker_obj.history(
@@ -85,7 +93,7 @@ class YFinanceProvider(MarketDataProvider):
                 )
             else:
                 df = ticker_obj.history(
-                    period=period or "1y",
+                    period=effective_period,
                     interval=interval,
                     auto_adjust=False,
                 )

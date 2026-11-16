@@ -109,6 +109,19 @@ with st.sidebar:
     selected_symbol = st.selectbox("Select Instrument (Universe)", options=universe_symbols, index=0)
     timeframe = st.selectbox("Timeframe", options=["1d", "1h", "15m"], index=0)
 
+    # Live Monitoring & Auto-Refresh Controls
+    st.markdown("#### **Live Monitoring Mode**")
+    auto_refresh = st.toggle("🔴 Auto-Refresh Live Chart", value=False)
+    refresh_rate = 10
+    if auto_refresh:
+        refresh_rate = st.select_slider(
+            "Refresh Interval",
+            options=[5, 10, 15, 30, 60],
+            value=10,
+            format_func=lambda s: f"{s}s",
+        )
+        st.caption(f"⚡ Live polling active (refreshing every {refresh_rate}s)")
+
     st.divider()
 
     # Portfolio Quick Snapshot
@@ -165,11 +178,19 @@ tab_market, tab_ai, tab_positions, tab_ledger, tab_backtest, tab_health = st.tab
 # TAB 1: Market & Technical Indicators
 # ==============================================================================
 with tab_market:
-    st.markdown(f"### **{selected_symbol} - Technical Analysis & Indicators**")
-    st.caption("Data source: Yahoo Finance (Delayed quotes for prototyping). Strictly for quantitative research.")
+    m_top_col1, m_top_col2 = st.columns([4, 1])
+    with m_top_col1:
+        st.markdown(f"### **{selected_symbol} — Live Market & Technical Indicators**")
+        st.caption(f"Data source: Yahoo Finance • {active_market} Market ({active_currency}) • Timeframe: {timeframe} • Polling interval: {refresh_rate if auto_refresh else 'Manual'}s")
+    with m_top_col2:
+        if st.button("🔄 Refresh Quote Now", use_container_width=True):
+            st.rerun()
+
+    # Smart lookback period based on selected timeframe
+    default_period = "5d" if timeframe == "15m" else ("1mo" if timeframe == "1h" else "6mo")
 
     with st.spinner(f"Loading market data and quantitative indicators for {selected_symbol}..."):
-        candles_data = api_client.get_candles(selected_symbol, timeframe=timeframe)
+        candles_data = api_client.get_candles(selected_symbol, timeframe=timeframe, period=default_period)
         indicators_data = api_client.get_indicators(selected_symbol, timeframe=timeframe)
 
     if candles_data.get("error"):
@@ -543,3 +564,10 @@ with tab_health:
             "market": "Market",
         },
     )
+
+
+# --- Background Live Polling Timer ---
+if auto_refresh:
+    import time
+    time.sleep(refresh_rate)
+    st.rerun()
