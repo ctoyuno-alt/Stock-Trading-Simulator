@@ -13,8 +13,15 @@ Features:
 9. System health, database latency, and NSE holiday calendar.
 """
 
+import sys
+from pathlib import Path
 from datetime import datetime
 import streamlit as st
+
+# Ensure application root (/app or workspace root) is in Python sys.path
+_APP_ROOT = str(Path(__file__).resolve().parent.parent)
+if _APP_ROOT not in sys.path:
+    sys.path.insert(0, _APP_ROOT)
 
 from dashboard.api_client import api_client
 from dashboard.components.charts import (
