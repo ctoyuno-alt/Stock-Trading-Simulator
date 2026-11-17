@@ -126,7 +126,7 @@ with st.sidebar:
             value=10,
             format_func=lambda s: f"{s}s",
         )
-        auto_trade_on_refresh = st.checkbox("🤖 Auto-Trade Cycle on Refresh", value=False)
+        auto_trade_on_refresh = st.checkbox("🤖 Auto-Manage Positions & AI Trades on Refresh", value=True)
         st.caption(f"⚡ Live polling active ({refresh_rate}s interval)")
 
     st.divider()
@@ -449,15 +449,23 @@ with tab_positions:
     if not open_positions:
         st.info(f"No active virtual {active_currency} swing positions currently open. Use the order execution portal below to enter trades.")
     else:
-        st.markdown(f"#### **Active Open Positions ({len(open_positions)} / 5 Max)**")
+        pos_hdr_c1, pos_hdr_c2 = st.columns([4, 1])
+        pos_hdr_c1.markdown(f"#### **Active Open Positions ({len(open_positions)} / 5 Max)**")
+        with pos_hdr_c2:
+            if st.button("🔄 Refresh Quotes", use_container_width=True):
+                st.rerun()
+
         for pos in open_positions:
             p_col1, p_col2, p_col3, p_col4, p_col5, p_col6 = st.columns([2, 2, 2, 2, 2, 2])
             pnl = pos.get("unrealized_pnl_inr", 0.0)
+            entry_p = pos.get("entry_price", 1.0)
+            curr_p = pos.get("current_price", 1.0)
+            ret_pct = ((curr_p - entry_p) / entry_p) * 100.0 if entry_p else 0.0
 
             p_col1.markdown(f"**{pos['symbol']}** ({pos['quantity']} shs • {pos.get('exchange', 'NSE')})")
-            p_col2.metric("Entry", f"{curr_sym}{pos['entry_price']:,.2f}")
-            p_col3.metric("Current", f"{curr_sym}{pos['current_price']:,.2f}")
-            p_col4.metric("Unrealized P&L", f"{curr_sym}{pnl:+,.2f}")
+            p_col2.metric("Entry", f"{curr_sym}{entry_p:,.2f}")
+            p_col3.metric("Current", f"{curr_sym}{curr_p:,.2f}")
+            p_col4.metric("Unrealized P&L", f"{curr_sym}{pnl:+,.2f}", delta=f"{ret_pct:+.2f}%")
             p_col5.markdown(f"**SL:** {curr_sym}{pos['stop_loss_price']:,.2f}<br>**TP:** {curr_sym}{pos.get('take_profit_price') or 0:,.2f}", unsafe_allow_html=True)
 
             if p_col6.button("Close Position", key=f"close_{pos['id']}", type="primary"):
@@ -539,6 +547,13 @@ with tab_ledger:
     metrics_data = api_client.get_metrics(currency=active_currency)
     orders_data = api_client.get_orders(limit=50, currency=active_currency)
 
+    # Floating Exposure & Portfolio P&L Overview
+    k_col1, k_col2, k_col3 = st.columns(3)
+    k_col1.metric("Open Floating P&L", f"{curr_sym}{portfolio.get('total_unrealized_pnl_inr', 0.0):+,.2f}", f"{portfolio.get('open_positions_count', 0)} Active Positions")
+    k_col2.metric("Net Closed Realized P&L", f"{curr_sym}{metrics_data.get('total_net_realized_pnl_inr', 0.0):+,.2f}", f"{metrics_data.get('total_trades', 0)} Closed Trades")
+    k_col3.metric("Total Account P&L", f"{curr_sym}{portfolio.get('total_pnl_inr', 0.0):+,.2f}", delta=f"{portfolio.get('return_on_initial_capital_pct', 0.0):+.2f}%")
+
+    st.markdown("##### **Closed Trades & Efficiency Metrics**")
     # KPI Summary Cards
     m_c1, m_c2, m_c3, m_c4, m_c5, m_c6 = st.columns(6)
     m_c1.metric("Win Rate", f"{metrics_data.get('win_rate_pct', 0.0):.1f}%", f"{metrics_data.get('winning_trades', 0)}W / {metrics_data.get('losing_trades', 0)}L")

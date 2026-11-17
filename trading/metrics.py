@@ -66,6 +66,23 @@ def calculate_performance_metrics(
     """
     total_trades = len(realized_pnls)
     if total_trades == 0:
+        total_charges = sum(charges_paid, Decimal("0.00"))
+        max_dd_inr = Decimal("0.00")
+        max_dd_pct = 0.0
+
+        if len(equity_curve) >= 2:
+            peak = equity_curve[0]
+            for eq in equity_curve:
+                if eq > peak:
+                    peak = eq
+                dd_inr = peak - eq
+                if dd_inr > max_dd_inr:
+                    max_dd_inr = dd_inr
+                if peak > Decimal("0.00"):
+                    dd_pct = float((dd_inr / peak) * Decimal("100.0"))
+                    if dd_pct > max_dd_pct:
+                        max_dd_pct = dd_pct
+
         return PerformanceMetrics(
             total_trades=0,
             winning_trades=0,
@@ -75,13 +92,13 @@ def calculate_performance_metrics(
             profit_factor=0.0,
             total_gross_profit_inr=Decimal("0.00"),
             total_gross_loss_inr=Decimal("0.00"),
-            total_charges_paid_inr=Decimal("0.00"),
+            total_charges_paid_inr=total_charges,
             total_net_realized_pnl_inr=Decimal("0.00"),
             average_trade_pnl_inr=Decimal("0.00"),
             largest_win_inr=Decimal("0.00"),
             largest_loss_inr=Decimal("0.00"),
-            max_drawdown_inr=Decimal("0.00"),
-            max_drawdown_pct=0.0,
+            max_drawdown_inr=max_dd_inr,
+            max_drawdown_pct=max_dd_pct,
             sharpe_ratio=None,
         )
 

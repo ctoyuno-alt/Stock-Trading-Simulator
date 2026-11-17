@@ -12,11 +12,11 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.market_data.universe import universe_manager
-from database.models import AccountModel, OrderModel, PositionModel, PositionStatus, PortfolioSnapshotModel
+from database.models import AccountModel, OrderModel, OrderStatus, PositionModel, PositionStatus, PortfolioSnapshotModel
 from database.session import get_db
 from trading.engine import PaperTradingEngine
 from trading.metrics import calculate_performance_metrics
@@ -141,6 +141,8 @@ async def list_positions(
     """Lists open and closed virtual positions with mark-to-market and P&L metrics."""
     if currency:
         account = await PaperTradingEngine.get_or_create_account(db, currency=currency)
+        if status_filter != "CLOSED":
+            await PaperTradingEngine.mark_to_market_portfolio(db, account, simulate_live_ticks=True)
         stmt = select(PositionModel).where(PositionModel.account_id == account.id)
     else:
         stmt = select(PositionModel)
@@ -221,7 +223,7 @@ async def get_portfolio(
 ) -> Dict[str, Any]:
     """Returns real-time account purchasing power, total equity, and open exposure."""
     account = await PaperTradingEngine.get_or_create_account(db, currency=currency)
-    await PaperTradingEngine.update_portfolio_equity(db, account)
+    await PaperTradingEngine.mark_to_market_portfolio(db, account, simulate_live_ticks=True)
 
     # Count open positions
     open_res = await db.execute(
@@ -244,6 +246,9 @@ async def get_portfolio(
     closed_positions = closed_res.scalars().all()
     realized = sum((p.realized_pnl_inr for p in closed_positions), Decimal("0.00"))
 
+    # Net account P&L (Equity - Initial Capital accounting for fees and floating PnL)
+    net_account_pnl = account.equity_inr - account.initial_capital_inr
+
     return {
         "account_name": account.account_name,
         "currency": account.currency,
@@ -254,8 +259,9 @@ async def get_portfolio(
         "open_positions_count": len(open_positions),
         "total_realized_pnl_inr": float(realized),
         "total_unrealized_pnl_inr": float(unrealized),
-        "total_pnl_inr": float(realized + unrealized),
-        "return_on_initial_capital_pct": round(float((account.equity_inr - account.initial_capital_inr) / account.initial_capital_inr) * 100.0, 2) if account.initial_capital_inr else 0.0,
+        "total_pnl_inr": float(net_account_pnl),
+        "net_pnl_inr": float(net_account_pnl),
+        "return_on_initial_capital_pct": round(float(net_account_pnl / account.initial_capital_inr) * 100.0, 2) if account.initial_capital_inr else 0.0,
     }
 
 
@@ -282,7 +288,17 @@ async def get_performance_metrics_route(
     closed = closed_res.scalars().all()
 
     realized_pnls = [p.realized_pnl_inr for p in closed]
-    charges = [p.total_charges_incurred_inr for p in closed]
+
+    # Query total charges incurred across ALL filled orders for this account
+    order_charges_res = await db.execute(
+        select(func.coalesce(func.sum(OrderModel.total_charges_inr), Decimal("0.00")))
+        .where(
+            OrderModel.account_id == account.id,
+            OrderModel.status == OrderStatus.FILLED,
+        )
+    )
+    total_order_charges = order_charges_res.scalar() or Decimal("0.00")
+    charges = [total_order_charges]
 
     # Fetch snapshots
     snap_res = await db.execute(
@@ -291,7 +307,9 @@ async def get_performance_metrics_route(
         .order_by(PortfolioSnapshotModel.timestamp.asc())
     )
     snapshots = snap_res.scalars().all()
-    equity_curve = [s.equity_inr for s in snapshots] or [account.equity_inr]
+    equity_curve = [s.equity_inr for s in snapshots]
+    if len(equity_curve) < 2:
+        equity_curve = [account.initial_capital_inr, account.equity_inr]
 
     metrics = calculate_performance_metrics(
         realized_pnls=realized_pnls,

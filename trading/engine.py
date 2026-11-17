@@ -385,6 +385,68 @@ class PaperTradingEngine:
         return events
 
     @staticmethod
+    async def mark_to_market_portfolio(
+        session: Any,
+        account: AccountModel,
+        simulate_live_ticks: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Marks all active open positions to market:
+        - Retrieves latest price or applies realistic paper trading price tick.
+        - Updates unrealized P&L for each open position.
+        - Evaluates protective Stop-Loss and Take-Profit bounds.
+        - Recalculates total account equity and saves snapshots.
+        """
+        from sqlalchemy import select
+        import random
+
+        pos_result = await session.execute(
+            select(PositionModel).where(
+                PositionModel.account_id == account.id,
+                PositionModel.status == PositionStatus.OPEN,
+            )
+        )
+        open_positions = pos_result.scalars().all()
+        events = []
+
+        for pos in open_positions:
+            current_price = pos.current_price
+            if simulate_live_ticks:
+                # Realistic micro-fluctuation (+/- 0.05% to 0.18%) for active paper simulation
+                jitter = Decimal(str(round(random.uniform(-0.0012, 0.0015), 4)))
+                current_price = round_inr(pos.current_price * (Decimal("1.0") + jitter))
+                pos.current_price = current_price
+
+            pos.unrealized_pnl_inr = round_inr((current_price - pos.average_entry_price) * Decimal(pos.quantity))
+            pos.updated_at = datetime.now(timezone.utc)
+
+            # Check Stop Loss Trigger
+            if current_price <= pos.stop_loss_price:
+                success, order, err = await PaperTradingEngine.close_position(
+                    session,
+                    position_id=pos.id,
+                    exit_price=current_price,
+                    enforce_market_hours=False,
+                    reason=f"STOP_LOSS_TRIGGERED (Exit price {current_price} hit stop {pos.stop_loss_price})",
+                )
+                events.append({"symbol": pos.symbol, "event": "STOP_LOSS", "exit_price": float(current_price), "success": success})
+
+            # Check Take Profit Trigger
+            elif pos.take_profit_price and current_price >= pos.take_profit_price:
+                success, order, err = await PaperTradingEngine.close_position(
+                    session,
+                    position_id=pos.id,
+                    exit_price=current_price,
+                    enforce_market_hours=False,
+                    reason=f"TAKE_PROFIT_TRIGGERED (Exit price {current_price} reached target {pos.take_profit_price})",
+                )
+                events.append({"symbol": pos.symbol, "event": "TAKE_PROFIT", "exit_price": float(current_price), "success": success})
+
+        await PaperTradingEngine.update_portfolio_equity(session, account)
+        await session.commit()
+        return events
+
+    @staticmethod
     async def update_portfolio_equity(session: Any, account: AccountModel) -> Decimal:
         """
         Recalculates total account equity: Cash Balance + Market Value of all open positions.
