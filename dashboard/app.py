@@ -160,6 +160,17 @@ with st.sidebar:
             api_client.toggle_kill_switch(activate=True, reason="User activated emergency stop")
             st.rerun()
 
+    st.divider()
+    with st.expander("🔄 Reset Virtual Account (Clean Slate)"):
+        st.caption(f"Clears existing orders/positions and resets starting capital to {curr_sym}{default_cap:,.2f} for fresh trading with real market prices.")
+        if st.button(f"Confirm Reset to {curr_sym}{default_cap:,.0f}", use_container_width=True, type="secondary"):
+            res = api_client.reset_paper_account(currency=active_currency, initial_capital=default_cap)
+            if res.get("error"):
+                st.error(f"Reset failed: {res.get('message')}")
+            else:
+                st.success(f"Account successfully reset to {curr_sym}{default_cap:,.2f}!")
+                st.rerun()
+
 
 # --- Main Dashboard Header ---
 market_header_text = "US Equities (NYSE/NASDAQ)" if is_us_market else "Indian Equities (NSE/BSE)"

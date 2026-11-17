@@ -191,5 +191,12 @@ class DashboardAPIClient:
     def clear_auto_trader_history(self) -> Dict[str, Any]:
         return self._request("POST", "/api/v1/auto-trader/clear-history")
 
+    def reset_paper_account(self, currency: str = "INR", initial_capital: float = 100000.0) -> Dict[str, Any]:
+        return self._request(
+            "POST",
+            "/api/v1/trading/reset-account",
+            {"currency": currency, "initial_capital": initial_capital},
+        )
+
 
 api_client = DashboardAPIClient()

@@ -274,7 +274,7 @@ class AutoTradingBot:
             try:
                 # Fetch candle history for signal generation
                 batch = self.market_provider.fetch_historical_ohlcv(sym, timeframe=cfg.timeframe, period="6mo")
-                if not batch.candles or len(batch.candles) < 50:
+                if not batch.candles or len(batch.candles) < 20:
                     batch = YFinanceProvider.generate_synthetic_history(sym, days=120)
 
                 signal = self.strategy.generate_signal(sym, batch.candles)

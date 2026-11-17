@@ -8,11 +8,12 @@ Exposes:
 - Performance metrics (Win Rate, Profit Factor, Max Drawdown, Sharpe Ratio).
 """
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.market_data.universe import universe_manager
@@ -318,3 +319,68 @@ async def get_performance_metrics_route(
     )
 
     return metrics.to_dict()
+
+
+class ResetAccountRequest(BaseModel):
+    currency: str = Field(default="INR", pattern="^(INR|USD)$")
+    initial_capital: float = Field(default=100000.0, gt=0)
+
+
+@router.post("/reset-account", summary="Reset Virtual Paper Account")
+async def reset_paper_account(
+    payload: ResetAccountRequest = ResetAccountRequest(),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Completely resets the paper trading account:
+    - Closes and removes existing open/closed positions and orders.
+    - Clears portfolio snapshots.
+    - Resets cash balance and equity to initial_capital (default ₹100,000 or $100,000).
+    - Seeds a fresh initial snapshot.
+    """
+    account = await PaperTradingEngine.get_or_create_account(db, currency=payload.currency)
+    init_cap = Decimal(str(round(payload.initial_capital, 2)))
+
+    # Delete all orders for this account
+    await db.execute(delete(OrderModel).where(OrderModel.account_id == account.id))
+
+    # Delete all positions for this account
+    await db.execute(delete(PositionModel).where(PositionModel.account_id == account.id))
+
+    # Delete all snapshots for this account
+    await db.execute(delete(PortfolioSnapshotModel).where(PortfolioSnapshotModel.account_id == account.id))
+
+    # Reset account fields
+    account.initial_capital_inr = init_cap
+    account.cash_balance_inr = init_cap
+    account.equity_inr = init_cap
+    account.updated_at = datetime.now(timezone.utc)
+
+    # Seed fresh starting snapshot
+    snap = PortfolioSnapshotModel(
+        account_id=account.id,
+        timestamp=datetime.now(timezone.utc),
+        equity_inr=init_cap,
+        cash_balance_inr=init_cap,
+        positions_market_value_inr=Decimal("0.00"),
+        total_realized_pnl_inr=Decimal("0.00"),
+        total_unrealized_pnl_inr=Decimal("0.00"),
+    )
+    db.add(snap)
+    await db.commit()
+
+    # Clear auto-trader bot in-memory history
+    try:
+        from backend.app.api.auto_trader import bot
+        bot.clear_history()
+    except Exception:
+        pass
+
+    return {
+        "status": "SUCCESS",
+        "message": f"Account '{account.account_name}' ({payload.currency}) successfully reset to initial capital of {init_cap}",
+        "currency": payload.currency,
+        "initial_capital": float(init_cap),
+        "cash_balance": float(init_cap),
+        "equity": float(init_cap),
+    }

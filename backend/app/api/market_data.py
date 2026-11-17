@@ -67,34 +67,36 @@ async def get_candles(
             detail=f"Symbol '{clean_symbol}' not found in active trading universe.",
         )
 
-    # 1. Check local DB cache first
-    cached_candles = await MarketDataStorage.get_candles(db, symbol=clean_symbol, timeframe=timeframe)
+    # 1. Primary: Fetch fresh real-market data from Yahoo Finance provider
+    batch = provider.fetch_historical_ohlcv(clean_symbol, timeframe=timeframe, period=period)
 
+    # If provider succeeded with real market candles, persist to DB and return
+    if batch.candles and batch.provider == "yfinance":
+        try:
+            await MarketDataStorage.save_candles(db, batch)
+        except Exception:
+            pass  # Non-fatal if DB write encounters transient issue
+        return batch.to_dict()
+
+    # 2. Secondary: Check local DB cache
+    cached_candles = await MarketDataStorage.get_candles(db, symbol=clean_symbol, timeframe=timeframe)
     if cached_candles and len(cached_candles) >= 30:
+        is_us = universe_manager.get_market_for_symbol(clean_symbol) == "US"
         batch = MarketDataBatch(
             symbol=clean_symbol,
-            exchange="NSE",
+            exchange="NASDAQ" if is_us else "NSE",
             timeframe=timeframe,
             candles=cached_candles,
             provider="database_cache",
             is_delayed=True,
-            delay_minutes=15,
+            delay_minutes=15 if not is_us else 0,
         )
         provider.validate_batch(batch)
         return batch.to_dict()
 
-    # 2. Fetch via provider
-    batch = provider.fetch_historical_ohlcv(clean_symbol, timeframe=timeframe, period=period)
-
-    # If yfinance failed to fetch (e.g. offline environment), fallback to deterministic synthetic data
+    # 3. Tertiary: Fallback to deterministic synthetic data in offline environments
     if not batch.candles:
         batch = YFinanceProvider.generate_synthetic_history(clean_symbol, days=120)
-
-    # Persist in DB
-    try:
-        await MarketDataStorage.save_candles(db, batch)
-    except Exception:
-        pass  # Non-fatal if DB write encounters transient issue
 
     return batch.to_dict()
 

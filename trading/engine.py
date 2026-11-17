@@ -411,12 +411,22 @@ class PaperTradingEngine:
 
         for pos in open_positions:
             current_price = pos.current_price
-            if simulate_live_ticks:
-                # Realistic micro-fluctuation (+/- 0.05% to 0.18%) for active paper simulation
-                jitter = Decimal(str(round(random.uniform(-0.0012, 0.0015), 4)))
-                current_price = round_inr(pos.current_price * (Decimal("1.0") + jitter))
-                pos.current_price = current_price
+            # Fetch latest real market quote if available
+            try:
+                from backend.app.market_data.yfinance_provider import YFinanceProvider
+                prov = YFinanceProvider()
+                quote = prov.fetch_latest_quote(pos.symbol)
+                if quote and quote.close and quote.close > Decimal("0"):
+                    current_price = quote.close
+            except Exception:
+                pass
 
+            if simulate_live_ticks:
+                # Realistic micro-fluctuation (+/- 0.05% to 0.15%) around real price for active paper simulation
+                jitter = Decimal(str(round(random.uniform(-0.0012, 0.0015), 4)))
+                current_price = round_inr(current_price * (Decimal("1.0") + jitter))
+
+            pos.current_price = current_price
             pos.unrealized_pnl_inr = round_inr((current_price - pos.average_entry_price) * Decimal(pos.quantity))
             pos.updated_at = datetime.now(timezone.utc)
 
