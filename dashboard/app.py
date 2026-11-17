@@ -196,7 +196,11 @@ with tab_market:
 
     chart_engine = st.radio(
         "Chart Engine View",
-        ["📈 TradingView Interactive Pro Chart (Live)", "📊 Quantitative Multi-Panel (EMA/VWAP/MACD/RSI)"],
+        [
+            "📈 TradingView Interactive Pro Chart (Live Canvas - All Stocks)",
+            "🌐 TradingView Advanced Widget (US Stocks & Web View)",
+            "📊 Quantitative Multi-Panel (Plotly Indicators)",
+        ],
         horizontal=True,
         index=0,
     )
@@ -222,9 +226,24 @@ with tab_market:
         kpi_c5.metric("MACD Hist", f"{latest_snap.get('macd_histogram') or 0:+.3f}", delta=latest_snap.get("macd_state"))
         kpi_c6.metric("VWAP", f"{curr_sym}{latest_snap.get('vwap') or 0:,.2f}", delta=f"{latest_snap.get('price_to_vwap_pct') or 0:+.2f}%")
 
-    if "TradingView" in chart_engine:
-        st.caption("⚡ Streaming live market prices with TradingView Advanced Charting, drawing tools, Fibonacci retracements & institutional dark theme.")
-        render_tradingview_chart(selected_symbol, timeframe=timeframe, height=680)
+    if "Canvas" in chart_engine or "All Stocks" in chart_engine:
+        st.caption(f"⚡ Interactive TradingView Canvas Chart for {selected_symbol} ({timeframe.upper()}) with volume histogram, EMA 20 (Cyan), EMA 50 (Orange) and live crosshair legend.")
+        render_tradingview_chart(
+            selected_symbol,
+            timeframe=timeframe,
+            height=640,
+            candles_data=candles_data,
+            indicators_data=indicators_data,
+            use_embed_widget=False,
+        )
+    elif "Advanced Widget" in chart_engine:
+        st.caption("⚡ TradingView Advanced Widget with drawing tools, Fibonacci retracements & institutional dark theme.")
+        render_tradingview_chart(
+            selected_symbol,
+            timeframe=timeframe,
+            height=680,
+            use_embed_widget=True,
+        )
     else:
         # Interactive Plotly Candlestick Chart
         fig = create_candlestick_with_indicators(candles_data, indicators_data, symbol=selected_symbol)
