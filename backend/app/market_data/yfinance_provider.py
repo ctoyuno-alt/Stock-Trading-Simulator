@@ -36,6 +36,19 @@ US_DEFAULT_PRICES: dict[str, Decimal] = {
     "V": Decimal("285.00"),
 }
 
+IN_DEFAULT_PRICES: dict[str, Decimal] = {
+    "RELIANCE": Decimal("1350.00"),
+    "TCS": Decimal("2425.00"),
+    "INFY": Decimal("1135.00"),
+    "HDFCBANK": Decimal("820.00"),
+    "ICICIBANK": Decimal("1600.00"),
+    "BHARTIARTL": Decimal("2160.00"),
+    "SBIN": Decimal("810.00"),
+    "ITC": Decimal("295.00"),
+    "LT": Decimal("3550.00"),
+    "TATAMOTORS": Decimal("780.00"),
+}
+
 
 class YFinanceProvider(MarketDataProvider):
     """Yahoo Finance market data ingestion engine with direct API, user-agent session, and safety checks."""
@@ -344,7 +357,10 @@ class YFinanceProvider(MarketDataProvider):
                 current_close = start_price
         else:
             base_dt = datetime(2026, 1, 1, 9, 15, tzinfo=IST_ZONE)
-            current_close = start_price
+            if start_price == Decimal("2500.00"):
+                current_close = IN_DEFAULT_PRICES.get(clean_symbol, Decimal("1000.00"))
+            else:
+                current_close = start_price
 
         seed_val = sum(ord(c) for c in clean_symbol)
 
