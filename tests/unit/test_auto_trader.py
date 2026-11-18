@@ -155,6 +155,7 @@ class TestAutoTraderAndTradingView(unittest.TestCase):
                     min_confluence_score=70,
                     require_ai_approval=True,
                     max_open_positions=1,
+                    allow_synthetic=True,
                 )
 
                 result = asyncio.run(self.bot.run_cycle(session=mock_session, market="IN", config_override=cfg))

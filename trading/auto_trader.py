@@ -44,6 +44,7 @@ class AutoTraderConfig:
     max_open_positions: int = 5
     enforce_market_hours: bool = False
     timeframe: str = "1d"
+    allow_synthetic: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -54,6 +55,7 @@ class AutoTraderConfig:
             "max_open_positions": self.max_open_positions,
             "enforce_market_hours": self.enforce_market_hours,
             "timeframe": self.timeframe,
+            "allow_synthetic": self.allow_synthetic,
         }
 
 
@@ -276,6 +278,11 @@ class AutoTradingBot:
                 batch = self.market_provider.fetch_historical_ohlcv(sym, timeframe=cfg.timeframe, period="6mo")
                 if not batch.candles or len(batch.candles) < 20:
                     batch = YFinanceProvider.generate_synthetic_history(sym, days=120)
+
+                # Guard: Never place live paper orders on synthetic fallback data
+                if batch.provider == "synthetic_fixture" and not cfg.allow_synthetic:
+                    logger.warning(f"Skipping auto-trade entry for {sym}: candles sourced from synthetic fixture fallback.")
+                    continue
 
                 signal = self.strategy.generate_signal(sym, batch.candles)
 

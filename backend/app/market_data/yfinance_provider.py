@@ -53,6 +53,10 @@ IN_DEFAULT_PRICES: dict[str, Decimal] = {
 class YFinanceProvider(MarketDataProvider):
     """Yahoo Finance market data ingestion engine with direct API, user-agent session, and safety checks."""
 
+    # Class-level caches shared across instances to prevent 429 rate limiting
+    _batch_cache: Dict[str, tuple[float, MarketDataBatch]] = {}
+    _quote_cache: Dict[str, tuple[float, Candle]] = {}
+
     def __init__(self, cache_ttl_minutes: int = 15) -> None:
         self.cache_ttl_minutes = cache_ttl_minutes
         self._session: Any = None
@@ -188,11 +192,22 @@ class YFinanceProvider(MarketDataProvider):
     ) -> MarketDataBatch:
         """
         Fetches real historical OHLCV data for NSE or US symbols via direct API or yfinance library.
+        Utilizes shared in-memory caching to eliminate HTTP 429 throttling on rapid auto-refresh intervals.
         """
         clean_symbol = universe_manager.normalize_symbol(symbol)
         yf_ticker = universe_manager.get_yfinance_ticker(clean_symbol)
         is_us = universe_manager.get_market_for_symbol(clean_symbol) == "US"
         exchange_name = "NASDAQ" if is_us else "NSE"
+
+        cache_key = f"{clean_symbol}_{timeframe}_{period}_{start_date}_{end_date}"
+        now_ts = time.time()
+        ttl_seconds = 60 if timeframe in ("5m", "15m") else 300
+
+        # Fast path: Check in-memory real data cache
+        if cache_key in self._batch_cache:
+            c_time, cached_batch = self._batch_cache[cache_key]
+            if now_ts - c_time < ttl_seconds and cached_batch.candles and cached_batch.provider == "yfinance":
+                return cached_batch
 
         logger.info(
             f"Fetching historical OHLCV data for {clean_symbol} ({yf_ticker}) [Timeframe: {timeframe}]",
@@ -266,7 +281,14 @@ class YFinanceProvider(MarketDataProvider):
             except Exception as exc:
                 logger.warning(f"yfinance library download failed for {yf_ticker}: {exc}")
 
-        # 3. Tertiary: Synthetic fallback for offline sandbox verification
+        # 3. Tertiary Fallback 1: Return stale in-memory cached real batch if transient network hiccup
+        if not candles and cache_key in self._batch_cache:
+            _, stale_batch = self._batch_cache[cache_key]
+            if stale_batch.candles and stale_batch.provider == "yfinance":
+                logger.info(f"Using cached real batch for {clean_symbol} during transient provider failure.")
+                return stale_batch
+
+        # 4. Tertiary Fallback 2: Synthetic fallback for offline sandbox verification
         provider_name = self.provider_name
         is_delayed = True
         delay_minutes = 15 if not is_us else 0
@@ -291,12 +313,20 @@ class YFinanceProvider(MarketDataProvider):
         )
 
         self.validate_batch(batch)
+        self._batch_cache[cache_key] = (now_ts, batch)
         return batch
 
     def fetch_latest_quote(self, symbol: str) -> Candle:
         """Fetches the latest real market candle/quote for the symbol."""
         clean_symbol = universe_manager.normalize_symbol(symbol)
         yf_ticker = universe_manager.get_yfinance_ticker(clean_symbol)
+
+        now_ts = time.time()
+        # Fast path: 15s quote cache to avoid 429 errors on rapid UI refreshes
+        if clean_symbol in self._quote_cache:
+            c_time, cached_quote = self._quote_cache[clean_symbol]
+            if now_ts - c_time < 15:
+                return cached_quote
 
         # 1. Try direct quote via meta.regularMarketPrice
         try:
@@ -315,7 +345,7 @@ class YFinanceProvider(MarketDataProvider):
                             if candles:
                                 last = candles[-1]
                                 price_dec = Decimal(str(round(float(market_price), 2)))
-                                return Candle(
+                                quote = Candle(
                                     timestamp=last.timestamp,
                                     open=last.open,
                                     high=max(last.high, price_dec),
@@ -324,14 +354,22 @@ class YFinanceProvider(MarketDataProvider):
                                     volume=last.volume,
                                     vwap=last.vwap,
                                 )
+                                self._quote_cache[clean_symbol] = (now_ts, quote)
+                                return quote
         except Exception as exc:
             logger.warning(f"Direct quote fetch failed for {yf_ticker}: {exc}")
+
+        # If direct failed but we have a recent cached quote, use it
+        if clean_symbol in self._quote_cache:
+            return self._quote_cache[clean_symbol][1]
 
         # 2. Fallback to historical OHLCV batch
         batch = self.fetch_historical_ohlcv(symbol, timeframe="1d", period="5d")
         if not batch.candles:
             raise RuntimeError(f"No recent quotes available for {symbol}")
-        return batch.candles[-1]
+        quote = batch.candles[-1]
+        self._quote_cache[clean_symbol] = (now_ts, quote)
+        return quote
 
     @staticmethod
     def generate_synthetic_history(
@@ -403,6 +441,31 @@ class YFinanceProvider(MarketDataProvider):
 
             current_close = day_close
             added_days += 1
+
+        # Calibrate final close to exactly match expected real price level
+        target_close = current_close
+        if candles and candles[-1].close > Decimal("0") and target_close > Decimal("0"):
+            final_c = candles[-1].close
+            scale = target_close / final_c
+            calibrated_candles: List[Candle] = []
+            for c in candles:
+                c_open = (c.open * scale).quantize(Decimal("0.05"))
+                c_high = (c.high * scale).quantize(Decimal("0.05"))
+                c_low = (c.low * scale).quantize(Decimal("0.05"))
+                c_close = (c.close * scale).quantize(Decimal("0.05"))
+                c_high = max(c_high, c_open, c_close)
+                c_low = max(Decimal("0.05"), min(c_low, c_open, c_close))
+                c_vwap = ((c_high + c_low + c_close) / Decimal("3")).quantize(Decimal("0.05"))
+                calibrated_candles.append(Candle(
+                    timestamp=c.timestamp,
+                    open=c_open,
+                    high=c_high,
+                    low=c_low,
+                    close=c_close,
+                    volume=c.volume,
+                    vwap=c_vwap,
+                ))
+            candles = calibrated_candles
 
         batch = MarketDataBatch(
             symbol=clean_symbol,
