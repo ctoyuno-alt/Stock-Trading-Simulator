@@ -27,6 +27,14 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Ensure schema migrations are applied idempotently for newly added safety fields
+        try:
+            await conn.execute(text("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_starting_equity NUMERIC(14, 2) DEFAULT 100000.00;"))
+            await conn.execute(text("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS circuit_breaker_tripped BOOLEAN DEFAULT FALSE;"))
+            await conn.execute(text("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS circuit_breaker_reason VARCHAR(128);"))
+            await conn.execute(text("UPDATE accounts SET daily_starting_equity = equity_inr WHERE daily_starting_equity IS NULL;"))
+        except Exception as mig_exc:
+            logger.debug(f"Schema migration skipped or dialect incompatible: {mig_exc}")
 
     session_factory = get_sessionmaker()
     async with session_factory() as session:
