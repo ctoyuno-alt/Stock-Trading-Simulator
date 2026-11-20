@@ -74,9 +74,24 @@ class DashboardAPIClient:
         return self._request("POST", "/api/v1/system/kill-switch", {"activate": activate, "reason": reason})
 
     # --- Market Data & Universe ---
-    def get_universe(self, market: Optional[str] = None) -> List[Dict[str, Any]]:
-        path = f"/api/v1/market-data/universe?market={market}" if market else "/api/v1/market-data/universe"
-        resp = self._request("GET", path)
+    def get_universe(
+        self,
+        market: Optional[str] = None,
+        scan_only: bool = False,
+        search: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        query_parts = []
+        if market:
+            query_parts.append(f"market={market}")
+        if scan_only:
+            query_parts.append("scan_only=true")
+        if search:
+            query_parts.append(f"search={search}")
+        if limit:
+            query_parts.append(f"limit={limit}")
+        qs = f"?{'&'.join(query_parts)}" if query_parts else ""
+        resp = self._request("GET", f"/api/v1/market-data/universe{qs}")
         return resp if isinstance(resp, list) else []
 
     def get_candles(self, symbol: str, timeframe: str = "1d", period: str = "6mo") -> Dict[str, Any]:

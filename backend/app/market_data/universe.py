@@ -8,8 +8,10 @@ Tracks:
    - AAPL, MSFT, NVDA, AMZN, GOOGL, META, TSLA, BRK-B, JPM, V
 """
 
+import csv
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 from typing import Dict, List, Optional
 
 
@@ -277,27 +279,67 @@ DEFAULT_UNIVERSE: Dict[str, InstrumentMetadata] = {
 
 
 class UniverseManager:
-    """Manages the active universe of tradable Indian and US instruments."""
+    """Manages the active universe of tradable Indian (NSE 2,600+ equities) and US instruments."""
 
     def __init__(self, custom_universe: Optional[Dict[str, InstrumentMetadata]] = None) -> None:
-        self._instruments: Dict[str, InstrumentMetadata] = custom_universe or DEFAULT_UNIVERSE
+        self._instruments: Dict[str, InstrumentMetadata] = dict(custom_universe or DEFAULT_UNIVERSE)
+        self._top_liquid_in_symbols: List[str] = list(DEFAULT_IN_UNIVERSE.keys())
+        self._top_liquid_us_symbols: List[str] = list(DEFAULT_US_UNIVERSE.keys())
+        self._aliases: Dict[str, str] = {
+            "ZOMATO": "ETERNAL",  # Zomato rebranded to Eternal Limited on NSE
+        }
+        self._load_full_nse_directory()
+
+    def _load_full_nse_directory(self) -> None:
+        """Loads all official listed equity instruments from the NSE master CSV directory."""
+        csv_path = Path(__file__).parent / "nse_equities.csv"
+        if not csv_path.exists():
+            return
+
+        try:
+            with open(csv_path, mode="r", encoding="utf-8", errors="ignore") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    cleaned_row = {k.strip(): v.strip() for k, v in row.items() if k}
+                    sym = cleaned_row.get("SYMBOL", "").upper()
+                    if not sym:
+                        continue
+
+                    # If not already present in curated defaults, register with official metadata
+                    if sym not in self._instruments:
+                        company_name = cleaned_row.get("NAME OF COMPANY", sym)
+                        series = cleaned_row.get("SERIES", "EQ")
+                        self._instruments[sym] = InstrumentMetadata(
+                            symbol=sym,
+                            yfinance_ticker=f"{sym}.NS",
+                            company_name=company_name,
+                            sector=f"NSE Equity ({series})",
+                            exchange="NSE",
+                            tick_size=Decimal("0.05"),
+                            lot_size=1,
+                            currency="INR",
+                            market="IN",
+                        )
+        except Exception:
+            # Fallback gracefully to default curated universe if file cannot be read
+            pass
 
     def normalize_symbol(self, raw_symbol: str) -> str:
         """
         Normalizes any input string to standard base symbol.
-        e.g. 'reliance.ns' -> 'RELIANCE', 'aapl' -> 'AAPL', 'brk.b' -> 'BRK-B'.
+        e.g. 'reliance.ns' -> 'RELIANCE', 'aapl' -> 'AAPL', 'brk.b' -> 'BRK-B', 'zomato' -> 'ETERNAL'.
         """
         cleaned = raw_symbol.strip().upper()
         if cleaned.endswith(".NS") or cleaned.endswith(".BO"):
             cleaned = cleaned[:-3]
         elif cleaned in ("BRK.B", "BRK/B"):
             cleaned = "BRK-B"
-        return cleaned
+        return self._aliases.get(cleaned, cleaned)
 
     def get_yfinance_ticker(self, raw_symbol: str) -> str:
         """
         Returns the Yahoo Finance formatted ticker.
-        e.g., 'RELIANCE' -> 'RELIANCE.NS', 'AAPL' -> 'AAPL'.
+        e.g., 'RELIANCE' -> 'RELIANCE.NS', 'AAPL' -> 'AAPL', 'TATAPOWER' -> 'TATAPOWER.NS'.
         """
         base = self.normalize_symbol(raw_symbol)
         inst = self._instruments.get(base)
@@ -320,25 +362,54 @@ class UniverseManager:
             return "US"
         return "IN"
 
-    def list_instruments(self, market: Optional[str] = None) -> List[InstrumentMetadata]:
-        """Lists tradable instruments, optionally filtered by market ('IN' or 'US')."""
-        if market:
-            target = market.upper()
-            return [inst for inst in self._instruments.values() if inst.market == target]
-        return list(self._instruments.values())
+    def list_instruments(
+        self,
+        market: Optional[str] = None,
+        scan_only: bool = False,
+        search: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[InstrumentMetadata]:
+        """Lists tradable instruments, optionally filtered by market, category, search query, or limit."""
+        target_market = market.upper() if market else None
+        search_term = search.strip().lower() if search else None
 
-    def get_symbols(self, market: Optional[str] = None) -> List[str]:
-        """Returns list of normalized symbols, optionally filtered by market ('IN' or 'US')."""
+        results = []
+        for inst in self._instruments.values():
+            if target_market and inst.market != target_market:
+                continue
+            if scan_only and inst.market == "IN" and inst.symbol not in self._top_liquid_in_symbols:
+                continue
+            if scan_only and inst.market == "US" and inst.symbol not in self._top_liquid_us_symbols:
+                continue
+            if search_term:
+                if search_term not in inst.symbol.lower() and search_term not in inst.company_name.lower():
+                    continue
+            results.append(inst)
+            if limit and len(results) >= limit:
+                break
+
+        return results
+
+    def get_symbols(self, market: Optional[str] = None, scan_only: bool = False) -> List[str]:
+        """
+        Returns list of normalized symbols.
+        If scan_only is True, returns only the focused liquid subset for autonomous auto-trader evaluation.
+        """
+        if scan_only:
+            if market == "IN":
+                return list(self._top_liquid_in_symbols)
+            elif market == "US":
+                return list(self._top_liquid_us_symbols)
+            return self._top_liquid_in_symbols + self._top_liquid_us_symbols
+
         if market:
             target = market.upper()
             return [inst.symbol for inst in self._instruments.values() if inst.market == target]
         return list(self._instruments.keys())
 
-    def get_yfinance_tickers(self, market: Optional[str] = None) -> List[str]:
-        if market:
-            target = market.upper()
-            return [inst.yfinance_ticker for inst in self._instruments.values() if inst.market == target]
-        return [inst.yfinance_ticker for inst in self._instruments.values()]
+    def get_yfinance_tickers(self, market: Optional[str] = None, scan_only: bool = False) -> List[str]:
+        symbols = self.get_symbols(market=market, scan_only=scan_only)
+        return [self.get_yfinance_ticker(s) for s in symbols]
 
 
 # Default singleton instance

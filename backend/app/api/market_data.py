@@ -44,9 +44,12 @@ class SyncRequest(BaseModel):
 @router.get("/universe", response_model=List[InstrumentResponse], summary="List Tradable Universe")
 async def get_universe(
     market: Optional[str] = Query(None, pattern="^(IN|US)$", description="Optional market filter: IN or US"),
+    scan_only: bool = Query(False, description="Filter to top liquid blue-chips for autonomous scanning"),
+    search: Optional[str] = Query(None, description="Search query by symbol or company name"),
+    limit: Optional[int] = Query(None, description="Limit number of returned instruments"),
 ) -> List[Dict[str, Any]]:
-    """Returns the tracked universe of instruments (NSE or US mega-caps) with metadata."""
-    instruments = universe_manager.list_instruments(market=market)
+    """Returns the tracked universe of instruments (all 2,600+ NSE or US mega-caps) with metadata."""
+    instruments = universe_manager.list_instruments(market=market, scan_only=scan_only, search=search, limit=limit)
     return [inst.to_dict() for inst in instruments]
 
 

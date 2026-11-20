@@ -265,7 +265,7 @@ class AutoTradingBot:
         # ======================================================================
         # PHASE 2: Autonomous Signal Scanning & New Order Execution
         # ======================================================================
-        candidate_symbols = universe_manager.get_symbols(market=market)
+        candidate_symbols = universe_manager.get_symbols(market=market, scan_only=True)
 
         for sym in candidate_symbols:
             if slots_available <= 0:

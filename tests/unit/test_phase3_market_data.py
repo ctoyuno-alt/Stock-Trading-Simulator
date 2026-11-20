@@ -23,12 +23,16 @@ class TestPhase3MarketData(unittest.TestCase):
         self.provider = YFinanceProvider()
 
     def test_universe_symbols_and_tick_sizes(self):
-        """Verify the 10 liquid NSE stocks are configured with standard ₹0.05 tick size."""
-        symbols = self.universe.get_symbols("IN")
-        self.assertEqual(len(symbols), 10)
+        """Verify the full 2,600+ NSE equities are loaded with 10 top liquid blue-chips configured."""
+        scan_symbols = self.universe.get_symbols("IN", scan_only=True)
+        self.assertEqual(len(scan_symbols), 10)
+
+        all_symbols = self.universe.get_symbols("IN")
+        self.assertGreater(len(all_symbols), 2600)
+
         expected = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "SBIN", "ITC", "LT", "TATAMOTORS"]
         for sym in expected:
-            self.assertIn(sym, symbols)
+            self.assertIn(sym, all_symbols)
             inst = self.universe.get_instrument(sym)
             self.assertIsNotNone(inst)
             self.assertEqual(inst.tick_size, Decimal("0.05"))

@@ -334,16 +334,38 @@ with st.sidebar:
 
     # Fetch Universe and Portfolio for the active market
     universe = api_client.get_universe(market=active_market)
-    universe_symbols = [inst["symbol"] for inst in universe] or (
+    all_universe_symbols = [inst["symbol"] for inst in universe] or (
         ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "JPM", "V"]
         if is_us_market
         else ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "SBIN", "ITC", "LT", "TATAMOTORS"]
     )
+    sym_to_name = {inst["symbol"]: inst.get("company_name", "") for inst in universe}
+
+    # Universe Scope Filter (for Indian equities: Blue-Chips vs All 2,600+ Listed Equities)
+    if not is_us_market and len(all_universe_symbols) > 15:
+        top_bluechips = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "SBIN", "ITC", "LT", "TATAMOTORS"]
+        scope = st.radio(
+            "Universe Scope",
+            [f"🏛️ All NSE Equities ({len(all_universe_symbols):,})", "🔥 Top Liquid Blue-Chips (10)"],
+            index=0,
+            horizontal=False,
+        )
+        if "Top Liquid" in scope:
+            universe_symbols = [s for s in top_bluechips if s in all_universe_symbols]
+        else:
+            universe_symbols = all_universe_symbols
+    else:
+        universe_symbols = all_universe_symbols
 
     portfolio = api_client.get_portfolio(currency=active_currency)
 
-    # Instrument & Timeframe Selectors
-    selected_symbol = st.selectbox("Select Instrument (Universe)", options=universe_symbols, index=0)
+    # Instrument & Timeframe Selectors with Autocomplete Formatting
+    selected_symbol = st.selectbox(
+        f"Select Instrument ({len(universe_symbols):,} Available)",
+        options=universe_symbols,
+        index=0,
+        format_func=lambda s: f"{s} — {sym_to_name.get(s, '')}" if sym_to_name.get(s) else s,
+    )
     timeframe = st.selectbox("Timeframe", options=["1d", "1h", "15m"], index=0)
 
     # Live Monitoring & Auto-Refresh Controls
@@ -1023,7 +1045,7 @@ with tab_health:
 
     st.divider()
 
-    st.markdown(f"#### **Active Universe Coverage ({active_market} Market - Top 10 Equities)**")
+    st.markdown(f"#### **Active Universe Coverage ({active_market} Market — {len(universe):,} Listed Equities)**")
     st.dataframe(
         universe,
         use_container_width=True,
