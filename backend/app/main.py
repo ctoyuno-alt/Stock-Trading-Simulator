@@ -62,9 +62,22 @@ async def lifespan(app: FastAPI):
             f"Database initialization deferred (database may still be starting up): {str(exc)}"
         )
 
+    # Launch autonomous background trading daemon
+    try:
+        from backend.app.core.trading_daemon import trading_daemon
+        trading_daemon.start(interval_seconds=30)
+        logger.info("Autonomous 24/7 background trading daemon initialized successfully.")
+    except Exception as d_exc:
+        logger.warning(f"Failed to start trading daemon: {d_exc}")
+
     yield
 
     logger.info("Shutting down Paper Trading Backend service...")
+    try:
+        from backend.app.core.trading_daemon import trading_daemon
+        trading_daemon.stop()
+    except Exception:
+        pass
 
 
 app = FastAPI(

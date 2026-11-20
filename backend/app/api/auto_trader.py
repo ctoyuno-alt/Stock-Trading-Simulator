@@ -147,3 +147,52 @@ async def clear_history() -> Dict[str, Any]:
     """Clears in-memory decision audit log."""
     auto_trading_bot.clear_history()
     return {"status": "success", "message": "Decision history cleared."}
+
+
+@router.get("/daemon/status", summary="Get 24/7 Background Trading Daemon Status")
+async def get_daemon_status() -> Dict[str, Any]:
+    """Returns live execution status, schedule, and telemetry for the 24/7 daemon."""
+    from backend.app.core.trading_daemon import trading_daemon
+    return trading_daemon.get_status()
+
+
+@router.post("/daemon/start", summary="Start 24/7 Background Trading Daemon")
+async def start_daemon(interval_seconds: int = Query(30, ge=5, le=300)) -> Dict[str, Any]:
+    """Starts the 24/7 autonomous background trading daemon."""
+    from backend.app.core.trading_daemon import trading_daemon
+    success = trading_daemon.start(interval_seconds=interval_seconds)
+    return {"status": "SUCCESS" if success else "ALREADY_RUNNING", "telemetry": trading_daemon.get_status()}
+
+
+@router.post("/daemon/stop", summary="Stop 24/7 Background Trading Daemon")
+async def stop_daemon() -> Dict[str, Any]:
+    """Stops the 24/7 autonomous background trading daemon."""
+    from backend.app.core.trading_daemon import trading_daemon
+    success = trading_daemon.stop()
+    return {"status": "STOPPED" if success else "NOT_RUNNING", "telemetry": trading_daemon.get_status()}
+
+
+@router.get("/gtt-orders", summary="List Active Virtual Exchange GTT Orders")
+async def list_gtt_orders(symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Returns active exchange-registered Stop-Loss and Take-Profit bracket orders."""
+    from trading.virtual_exchange import virtual_exchange
+    orders = virtual_exchange.get_active_orders(symbol=symbol)
+    return [o.to_dict() for o in orders]
+
+
+class TelegramTestRequest(BaseModel):
+    bot_token: Optional[str] = None
+    chat_id: Optional[str] = None
+
+
+@router.post("/notifications/test", summary="Test Telegram Push Alerts")
+async def test_telegram_notification(payload: TelegramTestRequest = TelegramTestRequest()) -> Dict[str, Any]:
+    """Sends a verification message to verify mobile Telegram push alerts."""
+    from backend.app.core.notifications import notifier, TelegramNotifier
+    if payload.bot_token and payload.chat_id:
+        test_bot = TelegramNotifier(bot_token=payload.bot_token, chat_id=payload.chat_id)
+        success, msg = test_bot.test_connection()
+    else:
+        success, msg = notifier.test_connection()
+
+    return {"success": success, "message": msg}

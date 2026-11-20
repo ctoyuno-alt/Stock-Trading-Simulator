@@ -56,6 +56,9 @@ class AccountModel(Base):
     initial_capital_inr: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("100000.00"), nullable=False)
     cash_balance_inr: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("100000.00"), nullable=False)
     equity_inr: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("100000.00"), nullable=False)
+    daily_starting_equity: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), default=Decimal("100000.00"), nullable=True)
+    circuit_breaker_tripped: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    circuit_breaker_reason: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     currency: Mapped[str] = mapped_column(String(8), default="INR", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

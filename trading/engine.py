@@ -108,6 +108,7 @@ class PaperTradingEngine:
             final_quantity = quantity
 
         # 3. Pre-trade Risk Validation
+        daily_start = getattr(account, "daily_starting_equity", None) or account.equity_inr
         risk_check = validate_order_risk(
             symbol=symbol,
             side="BUY",
@@ -118,6 +119,10 @@ class PaperTradingEngine:
             existing_symbols=existing_symbols,
             enforce_market_hours=enforce_market_hours,
             market=target_market,
+            current_equity=account.equity_inr,
+            daily_starting_equity=daily_start,
+            max_per_sector=2,
+            max_daily_drawdown_pct=0.02,
         )
         if not risk_check.is_valid:
             rejection_detail = "; ".join(risk_check.rejection_reasons)
@@ -199,6 +204,37 @@ class PaperTradingEngine:
         await PaperTradingEngine.update_portfolio_equity(session, account)
         await session.commit()
         await session.refresh(order)
+
+        # Register bracket order with Virtual Exchange Matching Engine
+        try:
+            from trading.virtual_exchange import virtual_exchange
+            virtual_exchange.register_bracket_order(
+                account_id=account.id,
+                position_id=position.id,
+                symbol=symbol,
+                quantity=final_quantity,
+                stop_loss_price=stop_loss_price,
+                take_profit_price=take_profit_price,
+            )
+        except Exception:
+            pass
+
+        # Dispatch real-time Telegram push notification
+        try:
+            from backend.app.core.notifications import notifier
+            notifier.notify_order_filled(
+                order_id=order.client_order_id,
+                symbol=order.symbol,
+                side="BUY",
+                quantity=order.quantity,
+                executed_price=order.executed_price,
+                currency=account.currency,
+                reason=order.reason,
+                stop_loss=order.stop_loss_price,
+                take_profit=order.take_profit_price,
+            )
+        except Exception:
+            pass
 
         logger.info(
             f"VIRTUAL BUY EXECUTED: {final_quantity} shares of {symbol} @ ₹{friction.executed_price} "
@@ -305,6 +341,30 @@ class PaperTradingEngine:
         await session.commit()
         await session.refresh(order)
 
+        # Cancel any pending virtual exchange bracket orders for this position
+        try:
+            from trading.virtual_exchange import virtual_exchange
+            virtual_exchange.cancel_orders_for_position(position.id, reason=reason)
+        except Exception:
+            pass
+
+        # Dispatch real-time Telegram push notification
+        try:
+            from backend.app.core.notifications import notifier
+            entry_p = position.average_entry_price
+            ret_pct = float(((friction.executed_price - entry_p) / entry_p) * 100.0) if entry_p else 0.0
+            notifier.notify_position_closed(
+                symbol=position.symbol,
+                exit_price=friction.executed_price,
+                quantity=position.quantity,
+                realized_pnl=realized_pnl,
+                return_pct=ret_pct,
+                reason=reason,
+                currency=account.currency,
+            )
+        except Exception:
+            pass
+
         logger.info(
             f"VIRTUAL SELL EXECUTED: Closed {position.quantity} shares of {position.symbol} @ ₹{friction.executed_price} "
             f"(Realized Net P&L: ₹{realized_pnl:+.2f}, Roundtrip Charges: ₹{total_roundtrip_charges})",
@@ -381,6 +441,25 @@ class PaperTradingEngine:
                 })
 
         await PaperTradingEngine.update_portfolio_equity(session, account)
+
+        # Check daily circuit breaker on account
+        daily_start = getattr(account, "daily_starting_equity", None) or account.equity_inr
+        if account.equity_inr < daily_start:
+            loss_pct = float((daily_start - account.equity_inr) / daily_start)
+            if loss_pct >= 0.02:
+                if hasattr(account, "circuit_breaker_tripped"):
+                    account.circuit_breaker_tripped = True
+                    account.circuit_breaker_reason = f"Daily max drawdown {loss_pct*100:.2f}% breached 2.0% limit."
+                try:
+                    from backend.app.core.notifications import notifier
+                    notifier.notify_circuit_breaker(
+                        daily_loss_pct=loss_pct,
+                        current_equity=account.equity_inr,
+                        currency=account.currency,
+                    )
+                except Exception:
+                    pass
+
         await session.commit()
         return events
 
@@ -453,6 +532,25 @@ class PaperTradingEngine:
                 events.append({"symbol": pos.symbol, "event": "TAKE_PROFIT", "exit_price": float(current_price), "success": success})
 
         await PaperTradingEngine.update_portfolio_equity(session, account)
+
+        # Check daily circuit breaker on account
+        daily_start = getattr(account, "daily_starting_equity", None) or account.equity_inr
+        if account.equity_inr < daily_start:
+            loss_pct = float((daily_start - account.equity_inr) / daily_start)
+            if loss_pct >= 0.02:
+                if hasattr(account, "circuit_breaker_tripped"):
+                    account.circuit_breaker_tripped = True
+                    account.circuit_breaker_reason = f"Daily max drawdown {loss_pct*100:.2f}% breached 2.0% limit."
+                try:
+                    from backend.app.core.notifications import notifier
+                    notifier.notify_circuit_breaker(
+                        daily_loss_pct=loss_pct,
+                        current_equity=account.equity_inr,
+                        currency=account.currency,
+                    )
+                except Exception:
+                    pass
+
         await session.commit()
         return events
 

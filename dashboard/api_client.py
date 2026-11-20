@@ -198,5 +198,30 @@ class DashboardAPIClient:
             {"currency": currency, "initial_capital": initial_capital},
         )
 
+    # --- 24/7 Autonomous Background Trading Daemon ---
+    def get_daemon_status(self) -> Dict[str, Any]:
+        return self._request("GET", "/api/v1/auto-trader/daemon/status")
+
+    def start_daemon(self, interval_seconds: int = 30) -> Dict[str, Any]:
+        return self._request("POST", f"/api/v1/auto-trader/daemon/start?interval_seconds={interval_seconds}")
+
+    def stop_daemon(self) -> Dict[str, Any]:
+        return self._request("POST", "/api/v1/auto-trader/daemon/stop")
+
+    def get_gtt_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+        url = "/api/v1/auto-trader/gtt-orders"
+        if symbol:
+            url = f"{url}?symbol={symbol}"
+        res = self._request("GET", url)
+        return res if isinstance(res, list) else []
+
+    def test_telegram_notification(self, bot_token: Optional[str] = None, chat_id: Optional[str] = None) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {}
+        if bot_token:
+            payload["bot_token"] = bot_token
+        if chat_id:
+            payload["chat_id"] = chat_id
+        return self._request("POST", "/api/v1/auto-trader/notifications/test", payload)
+
 
 api_client = DashboardAPIClient()

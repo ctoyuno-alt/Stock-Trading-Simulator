@@ -140,6 +140,58 @@ def calculate_position_size(
     )
 
 
+def validate_sector_concentration(
+    symbol: str,
+    existing_symbols: Set[str],
+    max_per_sector: int = 2,
+) -> tuple[bool, Optional[str]]:
+    """Enforces that no more than `max_per_sector` positions belong to the same industry sector."""
+    try:
+        from backend.app.market_data.universe import universe_manager
+        cand_inst = universe_manager.get_instrument(symbol)
+        cand_sector = cand_inst.sector if cand_inst else None
+        if not cand_sector:
+            return True, None
+
+        sector_count = 0
+        for s in existing_symbols:
+            inst = universe_manager.get_instrument(s)
+            if inst and inst.sector == cand_sector:
+                sector_count += 1
+
+        if sector_count >= max_per_sector:
+            return False, (
+                f"Sector concentration limit reached: {sector_count} position(s) already open in "
+                f"'{cand_sector}' (Maximum allowed: {max_per_sector})."
+            )
+    except Exception:
+        pass
+    return True, None
+
+
+def check_daily_circuit_breaker(
+    current_equity: Decimal,
+    daily_starting_equity: Optional[Decimal],
+    max_daily_drawdown_pct: float = 0.02,
+) -> tuple[bool, Optional[str]]:
+    """
+    Evaluates whether account daily loss has breached the daily circuit breaker limit.
+    Default: -2.0% daily maximum loss.
+    """
+    if daily_starting_equity is None or daily_starting_equity <= Decimal("0.00"):
+        return True, None
+
+    if current_equity < daily_starting_equity:
+        loss_inr = daily_starting_equity - current_equity
+        loss_pct = float(loss_inr / daily_starting_equity)
+        if loss_pct >= max_daily_drawdown_pct:
+            return False, (
+                f"DAILY CIRCUIT BREAKER TRIPPED: Current daily drawdown of {loss_pct*100:.2f}% "
+                f"exceeds maximum allowed limit of {max_daily_drawdown_pct*100:.2f}%. All new entries halted."
+            )
+    return True, None
+
+
 def validate_order_risk(
     symbol: str,
     side: str,
@@ -150,10 +202,16 @@ def validate_order_risk(
     existing_symbols: Set[str],
     enforce_market_hours: bool = True,
     market: Optional[str] = None,
+    current_equity: Optional[Decimal] = None,
+    daily_starting_equity: Optional[Decimal] = None,
+    max_per_sector: int = 2,
+    max_daily_drawdown_pct: float = 0.02,
 ) -> RiskValidationResult:
     """
     Validates comprehensive pre-trade risk constraints:
     - Kill switch status.
+    - Daily circuit breaker status (-2.0% drawdown).
+    - Sector concentration limits (max 2 per sector).
     - Market session & holiday check (NSE or US).
     - Concurrent position limit.
     - Duplicate position prevention.
@@ -165,7 +223,17 @@ def validate_order_risk(
     if settings.PAPER_TRADING_KILL_SWITCH:
         rejections.append("Order rejected: Emergency Paper Trading Kill Switch is ACTIVE.")
 
-    # 2. Market Session Hours & Holidays
+    # 2. Daily Circuit Breaker Check
+    if current_equity and daily_starting_equity:
+        is_cb_ok, cb_err = check_daily_circuit_breaker(
+            current_equity=current_equity,
+            daily_starting_equity=daily_starting_equity,
+            max_daily_drawdown_pct=max_daily_drawdown_pct,
+        )
+        if not is_cb_ok and cb_err:
+            rejections.append(f"Order rejected: {cb_err}")
+
+    # 3. Market Session Hours & Holidays
     if enforce_market_hours:
         from backend.app.market_data.universe import universe_manager
         target_market = (market or universe_manager.get_market_for_symbol(symbol)).upper()
@@ -173,11 +241,11 @@ def validate_order_risk(
         if not is_open:
             rejections.append(f"Order rejected: Outside market hours ({reason}).")
 
-    # 3. Quantity check
+    # 4. Quantity check
     if quantity <= 0:
         rejections.append(f"Order rejected: Quantity must be positive integer (got {quantity}).")
 
-    # 4. Long-only Buy validation
+    # 5. Long-only Buy validation
     if side.upper() == "BUY":
         # Max open positions
         if open_positions_count >= settings.MAX_OPEN_POSITIONS:
@@ -189,6 +257,15 @@ def validate_order_risk(
         clean_symbol = symbol.strip().upper()
         if clean_symbol in existing_symbols:
             rejections.append(f"Order rejected: An open position already exists for symbol '{clean_symbol}'.")
+
+        # Sector Concentration Check
+        is_sector_ok, sector_err = validate_sector_concentration(
+            symbol=clean_symbol,
+            existing_symbols=existing_symbols,
+            max_per_sector=max_per_sector,
+        )
+        if not is_sector_ok and sector_err:
+            rejections.append(f"Order rejected: {sector_err}")
 
         # Mandatory stop-loss check
         if stop_loss_price <= Decimal("0.00"):

@@ -447,6 +447,61 @@ with tab_autotrader:
             },
         )
 
+    st.divider()
+
+    # 24/7 Autonomous Background Daemon & Safety Controls
+    st.markdown("#### **🛡️ 24/7 Background Trading Daemon & Real-World Safety**")
+    d_col1, d_col2 = st.columns([1, 1])
+
+    with d_col1:
+        st.markdown("##### **24/7 Server Daemon Status**")
+        daemon_data = api_client.get_daemon_status()
+        d_running = daemon_data.get("is_running", False)
+        d_interval = daemon_data.get("interval_seconds", 30)
+        d_cycles = daemon_data.get("cycles_completed", 0)
+        d_last = daemon_data.get("last_cycle_at") or "Never"
+        m_status = daemon_data.get("markets_status", {}).get(active_market, {})
+        m_open = m_status.get("is_open", False)
+
+        m_badge = "🟢 Session OPEN" if m_open else f"🔴 Session CLOSED ({m_status.get('reason', 'Off hours')})"
+        d_badge = "🟢 ACTIVE (Running 24/7)" if d_running else "⏸️ STOPPED"
+
+        st.caption(f"Status: **{d_badge}** • {active_market} Market: **{m_badge}**")
+        st.caption(f"Polling Interval: **{d_interval}s** • Completed Cycles: **{d_cycles}** • Last Run: **{d_last.split('.')[0] if '.' in d_last else d_last}**")
+
+        c_d1, c_d2 = st.columns(2)
+        with c_d1:
+            if not d_running:
+                if st.button("🚀 Start 24/7 Background Daemon", type="primary", use_container_width=True):
+                    api_client.start_daemon(interval_seconds=30)
+                    st.rerun()
+            else:
+                if st.button("⏹️ Stop Background Daemon", type="secondary", use_container_width=True):
+                    api_client.stop_daemon()
+                    st.rerun()
+        with c_d2:
+            st.caption("When active, trades execute autonomously on the server even if your browser is closed.")
+
+    with d_col2:
+        st.markdown("##### **📱 Free Real-Time Telegram Push Alerts**")
+        with st.expander("Configure Telegram Trade Alerts"):
+            st.caption("Get instant notifications for orders, take-profits, and stop-loss triggers on your phone.")
+            tg_token = st.text_input("Telegram Bot Token (from @BotFather)", type="password", key="tg_bot_token_input")
+            tg_chat = st.text_input("Telegram Chat ID", key="tg_chat_id_input")
+            if st.button("🔔 Send Test Notification", use_container_width=True):
+                test_res = api_client.test_telegram_notification(bot_token=tg_token or None, chat_id=tg_chat or None)
+                if test_res.get("success"):
+                    st.success(test_res.get("message", "Test alert delivered!"))
+                else:
+                    st.error(test_res.get("message", "Failed to send alert. Check token/chat ID."))
+
+    # Virtual Exchange GTT Orders Section
+    gtt_orders = api_client.get_gtt_orders()
+    if gtt_orders:
+        st.markdown("##### **🏛️ Active Virtual Exchange GTT Bracket Orders**")
+        st.caption("Exchange-side simulated bracket orders protecting open positions with zero execution lag.")
+        st.dataframe(gtt_orders, use_container_width=True)
+
 
 # ==============================================================================
 # TAB 4: Positions & Execution Portal
