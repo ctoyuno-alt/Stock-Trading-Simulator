@@ -60,8 +60,10 @@ def create_candlestick_with_indicators(
             low=lows,
             close=closes,
             name="OHLC",
-            increasing_line_color="#00C087",
-            decreasing_line_color="#FF4B4B",
+            increasing_line_color="#00E676",
+            increasing_fillcolor="#00E676",
+            decreasing_line_color="#FF3B30",
+            decreasing_fillcolor="#FF3B30",
         ),
         row=1,
         col=1,
@@ -75,27 +77,27 @@ def create_candlestick_with_indicators(
 
         if ema_20:
             fig.add_trace(
-                go.Scatter(x=timestamps, y=ema_20, mode="lines", name="EMA 20", line=dict(color="#FFB300", width=1.5)),
+                go.Scatter(x=timestamps, y=ema_20, mode="lines", name="EMA 20", line=dict(color="#00F2FE", width=1.5)),
                 row=1,
                 col=1,
             )
         if ema_50:
             fig.add_trace(
-                go.Scatter(x=timestamps, y=ema_50, mode="lines", name="EMA 50", line=dict(color="#29B6F6", width=1.5)),
+                go.Scatter(x=timestamps, y=ema_50, mode="lines", name="EMA 50", line=dict(color="#FF9100", width=1.5)),
                 row=1,
                 col=1,
             )
         if vwap:
             fig.add_trace(
-                go.Scatter(x=timestamps, y=vwap, mode="lines", name="VWAP", line=dict(color="#AB47BC", width=1.5, dash="dot")),
+                go.Scatter(x=timestamps, y=vwap, mode="lines", name="VWAP", line=dict(color="#A855F7", width=1.5, dash="dot")),
                 row=1,
                 col=1,
             )
 
     # 2. Volume Bar Chart
-    vol_colors = ["#00C087" if closes[i] >= opens[i] else "#FF4B4B" for i in range(len(closes))]
+    vol_colors = ["#00E676" if closes[i] >= opens[i] else "#FF3B30" for i in range(len(closes))]
     fig.add_trace(
-        go.Bar(x=timestamps, y=volumes, name="Volume", marker_color=vol_colors, opacity=0.8),
+        go.Bar(x=timestamps, y=volumes, name="Volume", marker_color=vol_colors, opacity=0.7),
         row=2,
         col=1,
     )
@@ -107,30 +109,51 @@ def create_candlestick_with_indicators(
         hist = indicators_dict.get("macd_hist")
 
         fig.add_trace(
-            go.Scatter(x=timestamps, y=m_line, mode="lines", name="MACD", line=dict(color="#29B6F6", width=1.5)),
+            go.Scatter(x=timestamps, y=m_line, mode="lines", name="MACD", line=dict(color="#00F2FE", width=1.5)),
             row=3,
             col=1,
         )
         fig.add_trace(
-            go.Scatter(x=timestamps, y=s_line, mode="lines", name="Signal", line=dict(color="#FFB300", width=1.5)),
+            go.Scatter(x=timestamps, y=s_line, mode="lines", name="Signal", line=dict(color="#FF9100", width=1.5)),
             row=3,
             col=1,
         )
         if hist:
-            hist_colors = ["#00C087" if (h or 0) >= 0 else "#FF4B4B" for h in hist]
+            hist_colors = ["#00E676" if (h or 0) >= 0 else "#FF3B30" for h in hist]
             fig.add_trace(
-                go.Bar(x=timestamps, y=hist, name="Hist", marker_color=hist_colors, opacity=0.7),
+                go.Bar(x=timestamps, y=hist, name="Hist", marker_color=hist_colors, opacity=0.75),
                 row=3,
                 col=1,
             )
 
     fig.update_layout(
         template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="JetBrains Mono, Inter, -apple-system, sans-serif", color="#8F9CAE", size=11),
         xaxis_rangeslider_visible=False,
         height=700,
         margin=dict(l=30, r=30, t=40, b=30),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=11, color="#8F9CAE"),
+            bgcolor="rgba(14, 19, 31, 0.6)",
+        ),
         hovermode="x unified",
+    )
+    fig.update_xaxes(
+        gridcolor="rgba(255, 255, 255, 0.05)",
+        zerolinecolor="rgba(255, 255, 255, 0.05)",
+        tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
+    )
+    fig.update_yaxes(
+        gridcolor="rgba(255, 255, 255, 0.05)",
+        zerolinecolor="rgba(255, 255, 255, 0.05)",
+        tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
     )
 
     return fig
@@ -149,20 +172,31 @@ def create_rsi_chart(timestamps: List[str], rsi_values: List[Optional[float]]) -
             y=rsi_values,
             mode="lines",
             name="RSI 14",
-            line=dict(color="#9C27B0", width=2),
+            line=dict(color="#A855F7", width=2),
         )
     )
 
     # Horizontal guide bands
-    fig.add_hline(y=70, line_dash="dash", line_color="#FF4B4B", annotation_text="Overbought (70)")
-    fig.add_hline(y=30, line_dash="dash", line_color="#00C087", annotation_text="Oversold (30)")
-    fig.add_hline(y=50, line_dash="dot", line_color="#757575")
+    fig.add_hline(y=70, line_dash="dash", line_color="#FF3B30", annotation_text="Overbought (70)", annotation_font_color="#FF3B30")
+    fig.add_hline(y=30, line_dash="dash", line_color="#00E676", annotation_text="Oversold (30)", annotation_font_color="#00E676")
+    fig.add_hline(y=50, line_dash="dot", line_color="rgba(255, 255, 255, 0.2)")
 
     fig.update_layout(
         title="Relative Strength Index (RSI 14)",
         template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="JetBrains Mono, Inter, -apple-system, sans-serif", color="#8F9CAE", size=11),
         height=250,
-        yaxis=dict(range=[0, 100]),
+        yaxis=dict(
+            range=[0, 100],
+            gridcolor="rgba(255, 255, 255, 0.05)",
+            tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
+        ),
+        xaxis=dict(
+            gridcolor="rgba(255, 255, 255, 0.05)",
+            tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
+        ),
         margin=dict(l=30, r=30, t=40, b=30),
         hovermode="x unified",
     )
@@ -186,27 +220,43 @@ def create_equity_curve_chart(
             x=timestamps,
             y=equity_values,
             mode="lines+markers",
-            name="Virtual Equity (INR)",
-            line=dict(color="#00C087", width=2.5),
+            name="Virtual Equity",
+            line=dict(color="#00E676", width=2.5),
+            marker=dict(size=6, color="#00E676", symbol="circle"),
             fill="tozeroy",
-            fillcolor="rgba(0, 192, 135, 0.1)",
+            fillcolor="rgba(0, 230, 118, 0.08)",
         )
     )
 
     # Initial Capital Benchmark Line
     fig.add_hline(
         y=initial_capital,
-        line_dash="dash",
+        line_dash="dot",
         line_color="#FFB300",
-        annotation_text=f"Initial Capital (₹{initial_capital:,.2f})",
+        annotation_text=f"Initial Capital ({initial_capital:,.2f})",
+        annotation_font_color="#FFB300",
+        annotation_position="bottom right",
     )
 
     fig.update_layout(
-        title="Portfolio Equity Curve (INR)",
+        title="Portfolio Equity Curve",
         template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="JetBrains Mono, Inter, -apple-system, sans-serif", color="#8F9CAE", size=11),
         height=350,
         margin=dict(l=30, r=30, t=40, b=30),
         hovermode="x unified",
+    )
+    fig.update_xaxes(
+        gridcolor="rgba(255, 255, 255, 0.05)",
+        zerolinecolor="rgba(255, 255, 255, 0.05)",
+        tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
+    )
+    fig.update_yaxes(
+        gridcolor="rgba(255, 255, 255, 0.05)",
+        zerolinecolor="rgba(255, 255, 255, 0.05)",
+        tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
     )
 
     return fig

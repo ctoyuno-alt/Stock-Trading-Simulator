@@ -40,19 +40,241 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom Institutional CSS Styling
+# Custom Institutional Minimal-Modern CSS Styling
 st.markdown("""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-    .main-header { font-size: 26px; font-weight: 700; color: #FAFAFA; margin-bottom: 0px; }
-    .sub-caption { font-size: 13px; color: #9E9E9E; margin-bottom: 15px; }
-    .badge-open { background-color: #1B5E20; color: #A5D6A7; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-    .badge-closed { background-color: #B71C1C; color: #FFCDD2; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-    .badge-paper { background-color: #0D47A1; color: #90CAF9; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-    .badge-buy { background-color: #1B5E20; color: #A5D6A7; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-    .badge-sell-sl { background-color: #B71C1C; color: #FFCDD2; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-    .badge-sell-tp { background-color: #004D40; color: #80CBC4; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-    .badge-sell-rev { background-color: #E65100; color: #FFE0B2; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-    .metric-card { background-color: #1E1E1E; border-radius: 8px; padding: 12px; border: 1px solid #333333; }
+    /* Global Reset & Base Fonts */
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-color: #080B11 !important;
+        color: #E2E8F0;
+    }
+
+    /* Streamlit App Container Clean-up */
+    .block-container {
+        padding-top: 1.2rem !important;
+        padding-bottom: 2rem !important;
+        max-width: 98% !important;
+    }
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
+    }
+    #MainMenu, footer {
+        visibility: hidden !important;
+    }
+
+    /* Top App Bar Header */
+    .top-app-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #0E131F;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 12px 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+    .brand-title {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        color: #F8FAFC;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .brand-sub {
+        font-size: 12px;
+        color: #8F9CAE;
+        margin-top: 3px;
+    }
+    .status-capsules {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    .pill-open {
+        background: rgba(0, 230, 118, 0.12);
+        color: #00E676;
+        border: 1px solid rgba(0, 230, 118, 0.25);
+    }
+    .pill-closed {
+        background: rgba(255, 59, 48, 0.12);
+        color: #FF3B30;
+        border: 1px solid rgba(255, 59, 48, 0.25);
+    }
+    .pill-daemon {
+        background: rgba(99, 102, 241, 0.12);
+        color: #818CF8;
+        border: 1px solid rgba(99, 102, 241, 0.25);
+    }
+    .pill-paper {
+        background: rgba(0, 242, 254, 0.12);
+        color: #00F2FE;
+        border: 1px solid rgba(0, 242, 254, 0.25);
+    }
+
+    /* Modern Tabs Navigation (Segmented Pill Style) */
+    div[data-baseweb="tab-list"] {
+        gap: 6px !important;
+        background-color: transparent !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+        padding-bottom: 8px !important;
+        margin-bottom: 16px !important;
+    }
+    button[data-baseweb="tab"] {
+        background: #0E131F !important;
+        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        border-radius: 8px !important;
+        padding: 7px 14px !important;
+        color: #8F9CAE !important;
+        font-weight: 500 !important;
+        font-size: 12.5px !important;
+        letter-spacing: 0.02em !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    button[data-baseweb="tab"]:hover {
+        background: #172033 !important;
+        color: #F8FAFC !important;
+        border-color: rgba(255, 255, 255, 0.15) !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        background: #172033 !important;
+        border: 1px solid rgba(99, 102, 241, 0.5) !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 0 12px rgba(99, 102, 241, 0.2) !important;
+        font-weight: 600 !important;
+    }
+    div[data-baseweb="tab-highlight"] {
+        display: none !important;
+    }
+
+    /* Metric Cards - Frosted Glass Container Override */
+    div[data-testid="stMetric"] {
+        background: #0E131F !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 10px !important;
+        padding: 12px 16px !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+        transition: transform 0.15s ease, border-color 0.15s ease !important;
+    }
+    div[data-testid="stMetric"]:hover {
+        border-color: rgba(99, 102, 241, 0.4) !important;
+        transform: translateY(-1px);
+    }
+    div[data-testid="stMetricLabel"] p {
+        font-size: 11px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.06em !important;
+        color: #8F9CAE !important;
+        font-weight: 600 !important;
+        margin-bottom: 2px !important;
+    }
+    div[data-testid="stMetricValue"] {
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 20px !important;
+        font-weight: 700 !important;
+        color: #F8FAFC !important;
+        letter-spacing: -0.02em !important;
+    }
+    div[data-testid="stMetricDelta"] {
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 11.5px !important;
+        font-weight: 600 !important;
+    }
+
+    /* Modern Buttons */
+    div.stButton > button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        font-size: 13px !important;
+        letter-spacing: 0.02em !important;
+        padding: 8px 16px !important;
+        transition: all 0.2s ease !important;
+    }
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%) !important;
+        border: none !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 2px 10px rgba(79, 70, 229, 0.3) !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        box-shadow: 0 4px 16px rgba(79, 70, 229, 0.5) !important;
+        transform: translateY(-1px);
+    }
+    div.stButton > button[kind="secondary"] {
+        background: #121826 !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #E2E8F0 !important;
+    }
+    div.stButton > button[kind="secondary"]:hover {
+        background: #172033 !important;
+        border-color: rgba(255, 255, 255, 0.2) !important;
+    }
+
+    /* Sidebar Clean Elevation */
+    section[data-testid="stSidebar"] {
+        background-color: #0A0D15 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+    }
+    .sidebar-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+    .sidebar-brand-title {
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        color: #F8FAFC;
+    }
+
+    /* Dataframes & Tables */
+    div[data-testid="stDataFrame"] {
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 8px !important;
+        overflow: hidden !important;
+    }
+
+    /* Form Inputs, Selectboxes, Sliders */
+    div[data-baseweb="select"] > div {
+        background-color: #0E131F !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 8px !important;
+        color: #F8FAFC !important;
+    }
+    div[data-baseweb="input"] > div {
+        background-color: #0E131F !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 8px !important;
+        color: #F8FAFC !important;
+    }
+
+    /* Custom Dividers */
+    hr {
+        border-color: rgba(255, 255, 255, 0.06) !important;
+        margin: 18px 0 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -65,9 +287,18 @@ kill_switch_active = system_status.get("safety_guardrails", {}).get("kill_switch
 
 # --- Sidebar Controls & Metrics ---
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/bullish.png", width=64)
-    st.markdown("### **AI Paper Trading Station**")
-    st.caption("Institutional Quantitative Research • Multi-Market")
+    st.markdown(
+        """
+        <div class="sidebar-brand">
+            <span style="font-size: 24px;">⚡</span>
+            <div>
+                <div class="sidebar-brand-title">QUANTUM TRADER</div>
+                <div style="font-size: 11px; color: #8F9CAE;">AI Quantitative Trading Station</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # 1. Market Selection Toggle
     market_choice = st.radio(
@@ -92,10 +323,11 @@ with st.sidebar:
         badge_text = "NSE MARKET OPEN" if is_open else "NSE MARKET CLOSED"
         clock_label = f"IST: {clock_time}"
 
-    if is_open:
-        st.markdown(f'<span class="badge-open">● {badge_text}</span> <span class="badge-paper">VIRTUAL</span>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<span class="badge-closed">● {badge_text}</span> <span class="badge-paper">VIRTUAL</span>', unsafe_allow_html=True)
+    pill_cls = "pill-open" if is_open else "pill-closed"
+    st.markdown(
+        f'<span class="status-pill {pill_cls}">● {badge_text}</span> <span class="status-pill pill-paper">VIRTUAL</span>',
+        unsafe_allow_html=True,
+    )
     st.caption(clock_label)
 
     st.divider()
@@ -172,11 +404,32 @@ with st.sidebar:
                 st.rerun()
 
 
-# --- Main Dashboard Header ---
+# --- Main Dashboard Header App Bar ---
 market_header_text = "US Equities (NYSE/NASDAQ)" if is_us_market else "Indian Equities (NSE/BSE)"
+daemon_info = api_client.get_daemon_status()
+daemon_active = daemon_info.get("is_running", False)
+daemon_badge_class = "pill-open" if daemon_active else "pill-closed"
+daemon_badge_text = "24/7 DAEMON: ACTIVE" if daemon_active else "24/7 DAEMON: STANDBY"
+session_badge_class = "pill-open" if is_open else "pill-closed"
+session_badge_text = f"{active_market} SESSION: OPEN" if is_open else f"{active_market} SESSION: CLOSED"
+
 st.markdown(
-    f'<div class="main-header">📈 Gemini-Powered AI Paper Trading Simulator — {market_header_text}</div>'
-    f'<div class="sub-caption">Institutional Quantitative Research • Strictly Virtual Funds ({active_currency}) • Broker Independent</div>',
+    f"""
+    <div class="top-app-bar">
+        <div>
+            <div class="brand-title">
+                <span>⚡ QUANTUM TRADER</span>
+                <span class="status-pill pill-paper">{market_header_text}</span>
+            </div>
+            <div class="brand-sub">Institutional Quantitative Analytics • Multi-Factor Confluence Strategy • Broker Independent ({active_currency})</div>
+        </div>
+        <div class="status-capsules">
+            <span class="status-pill {session_badge_class}">● {session_badge_text}</span>
+            <span class="status-pill {daemon_badge_class}">● {daemon_badge_text}</span>
+            <span class="status-pill pill-paper">VIRTUAL SIMULATION</span>
+        </div>
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
@@ -286,13 +539,13 @@ with tab_ai:
             st.warning(f"Could not load strategy signal: {signal_data.get('message')}")
         else:
             action = signal_data.get("action", "HOLD")
-            action_color = "#00C087" if action == "BUY" else ("#FF4B4B" if action == "SELL" else "#BDBDBD")
+            action_color = "#00E676" if action == "BUY" else ("#FF3B30" if action == "SELL" else "#94A3B8")
 
             st.markdown(
-                f'<div style="background-color: #212121; padding: 16px; border-radius: 8px; border-left: 6px solid {action_color};">'
-                f'<h3 style="margin:0; color: {action_color};">Action: {action} ({signal_data.get("strength")})</h3>'
-                f'<p style="margin: 5px 0 0 0; color: #EEEEEE;"><strong>Technical Confluence Score:</strong> {signal_data.get("technical_score")}/100</p>'
-                f'<p style="margin: 5px 0 0 0; font-size: 13px; color: #BDBDBD;">{signal_data.get("primary_trigger")}</p>'
+                f'<div style="background-color: #0E131F; padding: 16px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid {action_color}; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);">'
+                f'<h3 style="margin:0; color: {action_color}; font-family: \'JetBrains Mono\', monospace;">Action: {action} ({signal_data.get("strength")})</h3>'
+                f'<p style="margin: 6px 0 0 0; color: #F8FAFC;"><strong>Technical Confluence Score:</strong> <span style="font-family: \'JetBrains Mono\', monospace; color: #00F2FE;">{signal_data.get("technical_score")}/100</span></p>'
+                f'<p style="margin: 6px 0 0 0; font-size: 13px; color: #8F9CAE;">{signal_data.get("primary_trigger")}</p>'
                 f'</div>',
                 unsafe_allow_html=True,
             )

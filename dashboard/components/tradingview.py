@@ -134,7 +134,7 @@ def render_tradingview_lightweight_chart(
         vol = float(c.get("volume", 0.0))
 
         candlestick_points.append({"time": t_sec, "open": op, "high": hi, "low": lo, "close": cl})
-        vol_col = "rgba(8, 153, 129, 0.45)" if cl >= op else "rgba(242, 54, 69, 0.45)"
+        vol_col = "rgba(0, 230, 118, 0.45)" if cl >= op else "rgba(255, 59, 48, 0.45)"
         volume_points.append({"time": t_sec, "value": vol, "color": vol_col})
 
     # Sort ascending by time
@@ -193,9 +193,9 @@ def render_tradingview_lightweight_chart(
                 width: 100%;
                 height: 100%;
                 overflow: hidden;
-                background-color: #131722;
-                font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
-                color: #d1d4dc;
+                background-color: #0E131F;
+                font-family: 'JetBrains Mono', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                color: #8F9CAE;
             }}
             #chart-wrapper {{
                 width: 100%;
@@ -211,31 +211,32 @@ def render_tradingview_lightweight_chart(
                 top: 8px;
                 left: 10px;
                 z-index: 50;
-                font-size: 13px;
+                font-size: 12px;
                 display: flex;
                 flex-wrap: wrap;
                 align-items: center;
-                gap: 10px;
-                background: rgba(19, 23, 34, 0.82);
-                padding: 5px 10px;
-                border-radius: 4px;
-                border: 1px solid rgba(42, 46, 57, 0.6);
-                backdrop-filter: blur(4px);
+                gap: 8px;
+                background: rgba(14, 19, 31, 0.88);
+                padding: 6px 12px;
+                border-radius: 6px;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                backdrop-filter: blur(8px);
                 pointer-events: none;
             }}
-            .legend-title {{ font-weight: 700; color: #ffffff; font-size: 14px; }}
+            .legend-title {{ font-weight: 700; color: #F8FAFC; font-size: 13px; letter-spacing: 0.04em; }}
             .legend-badge {{
-                background-color: #2a2e39;
-                color: #787b86;
-                padding: 2px 5px;
-                border-radius: 3px;
+                background-color: #172033;
+                color: #8F9CAE;
+                padding: 2px 6px;
+                border-radius: 4px;
+                border: 1px solid rgba(255, 255, 255, 0.06);
                 font-size: 11px;
                 font-weight: 600;
             }}
-            .val-up {{ color: #089981 !important; font-weight: 600; }}
-            .val-down {{ color: #f23645 !important; font-weight: 600; }}
-            .ema20-label {{ color: #2962FF; font-weight: 600; }}
-            .ema50-label {{ color: #FF6D00; font-weight: 600; }}
+            .val-up {{ color: #00E676 !important; font-weight: 600; }}
+            .val-down {{ color: #FF3B30 !important; font-weight: 600; }}
+            .ema20-label {{ color: #00F2FE; font-weight: 600; }}
+            .ema50-label {{ color: #FF9100; font-weight: 600; }}
             #watermark {{
                 position: absolute;
                 bottom: 35px;
@@ -243,7 +244,7 @@ def render_tradingview_lightweight_chart(
                 z-index: 10;
                 font-size: 32px;
                 font-weight: 800;
-                color: rgba(255, 255, 255, 0.04);
+                color: rgba(255, 255, 255, 0.03);
                 pointer-events: none;
                 user-select: none;
             }}
@@ -274,37 +275,37 @@ def render_tradingview_lightweight_chart(
                 width: container.clientWidth,
                 height: container.clientHeight || {height},
                 layout: {{
-                    background: {{ type: 'solid', color: '#131722' }},
-                    textColor: '#d1d4dc',
+                    background: {{ type: 'solid', color: '#0E131F' }},
+                    textColor: '#8F9CAE',
                 }},
                 grid: {{
-                    vertLines: {{ color: 'rgba(42, 46, 57, 0.4)' }},
-                    horzLines: {{ color: 'rgba(42, 46, 57, 0.4)' }},
+                    vertLines: {{ color: 'rgba(255, 255, 255, 0.04)' }},
+                    horzLines: {{ color: 'rgba(255, 255, 255, 0.04)' }},
                 }},
                 crosshair: {{
                     mode: LightweightCharts.CrosshairMode.Normal,
                 }},
                 rightPriceScale: {{
-                    borderColor: 'rgba(42, 46, 57, 0.8)',
+                    borderColor: 'rgba(255, 255, 255, 0.08)',
                     scaleMargins: {{
                         top: 0.1,
                         bottom: 0.22,
                     }},
                 }},
                 timeScale: {{
-                    borderColor: 'rgba(42, 46, 57, 0.8)',
+                    borderColor: 'rgba(255, 255, 255, 0.08)',
                     timeVisible: true,
                     secondsVisible: false,
                 }},
             }});
 
-            // 1. Candlestick Series (TradingView Standard Palette)
+            // 1. Candlestick Series (Minimal Modern Palette)
             const candleSeries = chart.addCandlestickSeries({{
-                upColor: '#089981',
-                downColor: '#f23645',
+                upColor: '#00E676',
+                downColor: '#FF3B30',
                 borderVisible: false,
-                wickUpColor: '#089981',
-                wickDownColor: '#f23645',
+                wickUpColor: '#00E676',
+                wickDownColor: '#FF3B30',
             }});
 
             // 2. Volume Series (Histogram at bottom)
@@ -319,7 +320,7 @@ def render_tradingview_lightweight_chart(
 
             // 3. EMA 20 Line Series (Cyan)
             const ema20Series = chart.addLineSeries({{
-                color: '#2962FF',
+                color: '#00F2FE',
                 lineWidth: 2,
                 crosshairMarkerVisible: true,
                 title: 'EMA 20',
@@ -327,7 +328,7 @@ def render_tradingview_lightweight_chart(
 
             // 4. EMA 50 Line Series (Orange)
             const ema50Series = chart.addLineSeries({{
-                color: '#FF6D00',
+                color: '#FF9100',
                 lineWidth: 2,
                 crosshairMarkerVisible: true,
                 title: 'EMA 50',
