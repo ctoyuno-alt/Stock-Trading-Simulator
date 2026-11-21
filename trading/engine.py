@@ -31,10 +31,41 @@ class PaperTradingEngine:
     """Asynchronous database-backed paper trading execution engine."""
 
     @staticmethod
-    async def get_or_create_account(session: Any, currency: str = "INR") -> AccountModel:
-        """Retrieves or creates the paper trading account for the specified currency (INR or USD)."""
+    async def get_or_create_account(
+        session: Any,
+        currency: str = "INR",
+        user_id: Optional[int] = None,
+    ) -> AccountModel:
+        """Retrieves or creates the paper trading account for the specified currency and optional user_id."""
         from sqlalchemy import select
         target_curr = currency.upper()
+
+        if user_id is not None:
+            result = await session.execute(
+                select(AccountModel).where(
+                    AccountModel.user_id == user_id,
+                    AccountModel.currency == target_curr,
+                )
+            )
+            account = result.scalar_one_or_none()
+            if account:
+                return account
+
+            initial = Decimal("25000.00") if target_curr == "USD" else settings.INITIAL_VIRTUAL_CAPITAL_INR
+            account = AccountModel(
+                user_id=user_id,
+                account_name=f"User #{user_id} {target_curr} Account",
+                initial_capital_inr=initial,
+                cash_balance_inr=initial,
+                equity_inr=initial,
+                currency=target_curr,
+                is_active=True,
+            )
+            session.add(account)
+            await session.commit()
+            await session.refresh(account)
+            return account
+
         account_name = "Primary USD Paper Account" if target_curr == "USD" else "Primary Paper Account"
         result = await session.execute(
             select(AccountModel).where(AccountModel.account_name == account_name)
@@ -65,6 +96,7 @@ class PaperTradingEngine:
         quantity: Optional[int] = None,
         enforce_market_hours: bool = True,
         reason: str = "Quantitative Strategy Entry",
+        user_id: Optional[int] = None,
     ) -> Tuple[bool, Optional[OrderModel], Optional[str]]:
         """
         Executes a virtual BUY order:
@@ -79,7 +111,7 @@ class PaperTradingEngine:
 
         target_market = universe_manager.get_market_for_symbol(symbol)
         target_currency = "USD" if target_market == "US" else "INR"
-        account = await PaperTradingEngine.get_or_create_account(session, currency=target_currency)
+        account = await PaperTradingEngine.get_or_create_account(session, currency=target_currency, user_id=user_id)
 
         # 1. Gather active positions for risk checks
         pos_result = await session.execute(

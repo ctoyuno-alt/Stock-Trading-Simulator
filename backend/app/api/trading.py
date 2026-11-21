@@ -16,8 +16,18 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.api.deps import get_optional_user
 from backend.app.market_data.universe import universe_manager
-from database.models import AccountModel, OrderModel, OrderStatus, PositionModel, PositionStatus, PortfolioSnapshotModel
+from database.models import (
+    AccountModel,
+    OrderModel,
+    OrderStatus,
+    PositionModel,
+    PositionStatus,
+    PortfolioSnapshotModel,
+    UserModel,
+    UserRole,
+)
 from database.session import get_db
 from trading.engine import PaperTradingEngine
 from trading.metrics import calculate_performance_metrics
@@ -43,6 +53,7 @@ class ClosePositionRequest(BaseModel):
 @router.post("/orders/buy", summary="Place Virtual Buy Order")
 async def place_buy_order(
     payload: BuyOrderRequest,
+    current_user: Optional[UserModel] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """
@@ -61,6 +72,7 @@ async def place_buy_order(
     price_dec = Decimal(str(round(payload.price, 2)))
     sl_dec = Decimal(str(round(payload.stop_loss_price, 2)))
     tp_dec = Decimal(str(round(payload.take_profit_price, 2))) if payload.take_profit_price else None
+    user_id = current_user.id if current_user else None
 
     success, order, err = await PaperTradingEngine.execute_buy(
         session=db,
@@ -71,6 +83,7 @@ async def place_buy_order(
         quantity=payload.quantity,
         enforce_market_hours=payload.enforce_market_hours,
         reason=payload.reason,
+        user_id=user_id,
     )
 
     if not success:
@@ -137,16 +150,21 @@ async def close_position_route(
 async def list_positions(
     status_filter: Optional[str] = Query(None, pattern="^(OPEN|CLOSED)$"),
     currency: Optional[str] = Query(None, pattern="^(INR|USD)$"),
+    current_user: Optional[UserModel] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ) -> List[Dict[str, Any]]:
     """Lists open and closed virtual positions with mark-to-market and P&L metrics."""
+    user_id = current_user.id if current_user else None
     if currency:
-        account = await PaperTradingEngine.get_or_create_account(db, currency=currency)
+        account = await PaperTradingEngine.get_or_create_account(db, currency=currency, user_id=user_id)
         if status_filter != "CLOSED":
             await PaperTradingEngine.mark_to_market_portfolio(db, account, simulate_live_ticks=True)
         stmt = select(PositionModel).where(PositionModel.account_id == account.id)
     else:
-        stmt = select(PositionModel)
+        if user_id and (not current_user or current_user.role != UserRole.ADMIN):
+            stmt = select(PositionModel).join(AccountModel).where(AccountModel.user_id == user_id)
+        else:
+            stmt = select(PositionModel)
 
     if status_filter:
         pos_status = PositionStatus.OPEN if status_filter == "OPEN" else PositionStatus.CLOSED
@@ -181,14 +199,19 @@ async def list_positions(
 async def list_orders(
     limit: int = Query(50, le=200),
     currency: Optional[str] = Query(None, pattern="^(INR|USD)$"),
+    current_user: Optional[UserModel] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ) -> List[Dict[str, Any]]:
     """Returns the chronological audit trail of all executed virtual paper orders."""
+    user_id = current_user.id if current_user else None
     if currency:
-        account = await PaperTradingEngine.get_or_create_account(db, currency=currency)
+        account = await PaperTradingEngine.get_or_create_account(db, currency=currency, user_id=user_id)
         stmt = select(OrderModel).where(OrderModel.account_id == account.id)
     else:
-        stmt = select(OrderModel)
+        if user_id and (not current_user or current_user.role != UserRole.ADMIN):
+            stmt = select(OrderModel).join(AccountModel).where(AccountModel.user_id == user_id)
+        else:
+            stmt = select(OrderModel)
 
     stmt = stmt.order_by(OrderModel.created_at.desc()).limit(limit)
     result = await db.execute(stmt)
@@ -220,10 +243,12 @@ async def list_orders(
 @router.get("/portfolio", summary="Get Portfolio Balance & State")
 async def get_portfolio(
     currency: str = Query("INR", pattern="^(INR|USD)$"),
+    current_user: Optional[UserModel] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """Returns real-time account purchasing power, total equity, and open exposure."""
-    account = await PaperTradingEngine.get_or_create_account(db, currency=currency)
+    user_id = current_user.id if current_user else None
+    account = await PaperTradingEngine.get_or_create_account(db, currency=currency, user_id=user_id)
     await PaperTradingEngine.mark_to_market_portfolio(db, account, simulate_live_ticks=True)
 
     # Count open positions
@@ -269,13 +294,15 @@ async def get_portfolio(
 @router.get("/metrics", summary="Get Institutional Performance Metrics")
 async def get_performance_metrics_route(
     currency: str = Query("INR", pattern="^(INR|USD)$"),
+    current_user: Optional[UserModel] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """
     Computes Win Rate, Profit Factor, Maximum Drawdown, and Sharpe Ratio
     across trade ledger and portfolio snapshots.
     """
-    account = await PaperTradingEngine.get_or_create_account(db, currency=currency)
+    user_id = current_user.id if current_user else None
+    account = await PaperTradingEngine.get_or_create_account(db, currency=currency, user_id=user_id)
 
     # Fetch closed positions
     closed_res = await db.execute(
@@ -329,6 +356,7 @@ class ResetAccountRequest(BaseModel):
 @router.post("/reset-account", summary="Reset Virtual Paper Account")
 async def reset_paper_account(
     payload: ResetAccountRequest = ResetAccountRequest(),
+    current_user: Optional[UserModel] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """
@@ -338,7 +366,13 @@ async def reset_paper_account(
     - Resets cash balance and equity to initial_capital (default ₹100,000 or $100,000).
     - Seeds a fresh initial snapshot.
     """
-    account = await PaperTradingEngine.get_or_create_account(db, currency=payload.currency)
+    if current_user and current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required to reset paper trading account.",
+        )
+    user_id = current_user.id if current_user else None
+    account = await PaperTradingEngine.get_or_create_account(db, currency=payload.currency, user_id=user_id)
     init_cap = Decimal(str(round(payload.initial_capital, 2)))
 
     # Delete all orders for this account

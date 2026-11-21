@@ -22,6 +22,11 @@ class DashboardAPIClient:
     def __init__(self, base_url: str = BACKEND_BASE_URL) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = 10  # 10s default timeout
+        self.auth_token: Optional[str] = None
+
+    def set_auth_token(self, token: Optional[str]) -> None:
+        """Stores or clears JWT bearer authentication token."""
+        self.auth_token = token
 
     def _request(
         self,
@@ -33,6 +38,8 @@ class DashboardAPIClient:
         url = f"{self.base_url}{path}"
         req_timeout = timeout or self.timeout
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
 
         data_bytes = None
         if payload is not None:
@@ -62,6 +69,29 @@ class DashboardAPIClient:
             }
         except Exception as exc:
             return {"error": True, "status_code": 500, "message": f"Unexpected client error: {str(exc)}"}
+
+    # --- Authentication & User Management ---
+    def login(self, username: str, password: str) -> Dict[str, Any]:
+        """Authenticates user with username & password, storing JWT access token."""
+        resp = self._request("POST", "/api/v1/auth/login", {"username": username, "password": password})
+        if not resp.get("error") and "access_token" in resp:
+            self.set_auth_token(resp["access_token"])
+        return resp
+
+    def register(self, username: str, email: str, password: str) -> Dict[str, Any]:
+        """Registers a new user, storing JWT access token upon success."""
+        resp = self._request("POST", "/api/v1/auth/register", {"username": username, "email": email, "password": password})
+        if not resp.get("error") and "access_token" in resp:
+            self.set_auth_token(resp["access_token"])
+        return resp
+
+    def get_me(self) -> Dict[str, Any]:
+        """Retrieves profile of currently authenticated user."""
+        return self._request("GET", "/api/v1/auth/me")
+
+    def generate_api_key(self) -> Dict[str, Any]:
+        """Rotates or creates a programmatic API key for the user."""
+        return self._request("POST", "/api/v1/auth/api-key")
 
     # --- System & Health ---
     def get_system_status(self) -> Dict[str, Any]:

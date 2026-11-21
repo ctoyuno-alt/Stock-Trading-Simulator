@@ -123,6 +123,17 @@ if HAS_PYDANTIC:
         DASHBOARD_PORT: int = 8501
         BACKEND_INTERNAL_URL: str = "http://backend:8000"
 
+        # Authentication & JWT Security Settings
+        JWT_SECRET_KEY: str = Field(
+            default="quantum_trader_super_secure_jwt_secret_key_2026",
+            description="HMAC-SHA256 signature key for issuing and validating JWT access tokens."
+        )
+        JWT_ALGORITHM: str = "HS256"
+        JWT_EXPIRATION_HOURS: int = 24
+        DEFAULT_ADMIN_USERNAME: str = "admin"
+        DEFAULT_ADMIN_PASSWORD: str = "admin_secure_password"
+        DEFAULT_ADMIN_EMAIL: str = "admin@quantumtrader.local"
+
         @field_validator("ENABLE_REAL_TRADING")
         @classmethod
         def validate_safety_lock(cls, v: bool) -> bool:
@@ -243,6 +254,13 @@ else:
             self.DASHBOARD_HOST: str = _get("DASHBOARD_HOST", "0.0.0.0", str)
             self.DASHBOARD_PORT: int = _get("DASHBOARD_PORT", 8501, int)
             self.BACKEND_INTERNAL_URL: str = _get("BACKEND_INTERNAL_URL", "http://backend:8000", str)
+
+            self.JWT_SECRET_KEY: str = _get("JWT_SECRET_KEY", "quantum_trader_super_secure_jwt_secret_key_2026", str)
+            self.JWT_ALGORITHM: str = _get("JWT_ALGORITHM", "HS256", str)
+            self.JWT_EXPIRATION_HOURS: int = _get("JWT_EXPIRATION_HOURS", 24, int)
+            self.DEFAULT_ADMIN_USERNAME: str = _get("DEFAULT_ADMIN_USERNAME", "admin", str)
+            self.DEFAULT_ADMIN_PASSWORD: str = _get("DEFAULT_ADMIN_PASSWORD", "admin_secure_password", str)
+            self.DEFAULT_ADMIN_EMAIL: str = _get("DEFAULT_ADMIN_EMAIL", "admin@quantumtrader.local", str)
 
         @property
         def async_database_url(self) -> str:

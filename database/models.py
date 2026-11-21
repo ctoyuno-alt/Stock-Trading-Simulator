@@ -43,6 +43,36 @@ class OrderStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
 
 
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    TRADER = "trader"
+    VIEWER = "viewer"
+
+
+class UserModel(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(256), nullable=False)
+    salt: Mapped[str] = mapped_column(String(64), nullable=False)
+    role: Mapped[UserRole] = mapped_column(SQLEnum(UserRole), default=UserRole.TRADER, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    api_key: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    accounts: Mapped[List["AccountModel"]] = relationship("AccountModel", back_populates="user")
+
+
 class PositionStatus(str, enum.Enum):
     OPEN = "OPEN"
     CLOSED = "CLOSED"
@@ -52,6 +82,7 @@ class AccountModel(Base):
     __tablename__ = "accounts"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
     account_name: Mapped[str] = mapped_column(String(64), unique=True, default="Primary Paper Account")
     initial_capital_inr: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("100000.00"), nullable=False)
     cash_balance_inr: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("100000.00"), nullable=False)
@@ -71,6 +102,7 @@ class AccountModel(Base):
         nullable=False,
     )
 
+    user: Mapped[Optional["UserModel"]] = relationship("UserModel", back_populates="accounts")
     positions: Mapped[List["PositionModel"]] = relationship("PositionModel", back_populates="account")
     orders: Mapped[List["OrderModel"]] = relationship("OrderModel", back_populates="account")
     snapshots: Mapped[List["PortfolioSnapshotModel"]] = relationship("PortfolioSnapshotModel", back_populates="account")

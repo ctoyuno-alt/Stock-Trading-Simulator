@@ -279,6 +279,79 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# --- User Authentication Gate ---
+auth_token = st.session_state.get("auth_token")
+user_profile = st.session_state.get("user_profile")
+
+if auth_token:
+    api_client.set_auth_token(auth_token)
+
+if not auth_token or not user_profile:
+    # Render minimal modern Obsidian login / registration interface
+    st.markdown(
+        """
+        <div style="text-align: center; margin-top: 3rem; margin-bottom: 2rem;">
+            <div style="font-size: 38px; margin-bottom: 8px;">⚡</div>
+            <div style="font-size: 26px; font-weight: 700; color: #F8FAFC; letter-spacing: 0.04em;">QUANTUM TRADER</div>
+            <div style="font-size: 13px; color: #8F9CAE; margin-top: 4px;">Institutional AI Paper Trading & Quantitative Analytics Workstation</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    auth_col1, auth_col2, auth_col3 = st.columns([1, 1.8, 1])
+    with auth_col2:
+        tab_login, tab_register = st.tabs(["🔐 Sign In", "✨ Create Account"])
+        with tab_login:
+            with st.form("login_form"):
+                st.markdown("#### **Access Your Terminal**")
+                login_user = st.text_input("Username", placeholder="e.g. admin or trader_one")
+                login_pass = st.text_input("Password", type="password", placeholder="Enter your password")
+                submitted = st.form_submit_button("Sign In to Terminal", use_container_width=True, type="primary")
+                if submitted:
+                    if not login_user or not login_pass:
+                        st.error("Please enter both username and password.")
+                    else:
+                        resp = api_client.login(login_user, login_pass)
+                        if resp.get("error"):
+                            st.error(f"Authentication failed: {resp.get('message', 'Invalid credentials')}")
+                        else:
+                            st.session_state["auth_token"] = resp.get("access_token")
+                            st.session_state["user_profile"] = resp.get("user")
+                            st.rerun()
+
+            st.caption("💡 **Default Administrator Access:** `admin` / `admin_secure_password`")
+
+        with tab_register:
+            with st.form("register_form"):
+                st.markdown("#### **Create New Trader Account**")
+                reg_user = st.text_input("Username", placeholder="Choose username (3+ chars)")
+                reg_email = st.text_input("Email", placeholder="trader@quantum.ai")
+                reg_pass = st.text_input("Password", type="password", placeholder="Minimum 8 characters")
+                reg_submitted = st.form_submit_button("Register & Launch Terminal", use_container_width=True, type="primary")
+                if reg_submitted:
+                    if not reg_user or not reg_email or not reg_pass:
+                        st.error("Please fill in all registration fields.")
+                    elif len(reg_pass) < 8:
+                        st.error("Password must be at least 8 characters long.")
+                    else:
+                        resp = api_client.register(reg_user, reg_email, reg_pass)
+                        if resp.get("error"):
+                            st.error(f"Registration failed: {resp.get('message', 'Could not create account')}")
+                        else:
+                            st.session_state["auth_token"] = resp.get("access_token")
+                            st.session_state["user_profile"] = resp.get("user")
+                            st.rerun()
+
+    st.stop()
+
+
+# --- Authenticated User Context ---
+current_user = st.session_state.get("user_profile", {})
+user_role = current_user.get("role", "trader")
+is_admin = user_role == "admin"
+
+
 # --- Fetch Global System Status ---
 system_status = api_client.get_system_status()
 health_ready = api_client.get_health_ready()
@@ -299,6 +372,27 @@ with st.sidebar:
         """,
         unsafe_allow_html=True,
     )
+
+    # User Profile Capsule & Sign Out
+    st.markdown(
+        f"""
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-weight: 600; font-size: 13px; color: #F8FAFC;">👤 {current_user.get('username', 'User')}</div>
+                <div style="font-size: 10px; color: #8F9CAE; font-family: 'JetBrains Mono', monospace;">ROLE: {user_role.upper()}</div>
+            </div>
+            <span class="status-pill {'pill-paper' if is_admin else 'pill-daemon'}">{user_role.upper()}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("🚪 Sign Out", use_container_width=True):
+        st.session_state.pop("auth_token", None)
+        st.session_state.pop("user_profile", None)
+        api_client.set_auth_token(None)
+        st.rerun()
+
+    st.divider()
 
     # 1. Market Selection Toggle
     market_choice = st.radio(
@@ -403,27 +497,30 @@ with st.sidebar:
 
     # Emergency Kill Switch
     st.markdown("#### **Safety Controls**")
-    if kill_switch_active:
-        st.error("⚠️ KILL SWITCH ACTIVE - Order placement halted")
-        if st.button("Deactivate Kill Switch", use_container_width=True):
-            api_client.toggle_kill_switch(activate=False, reason="User toggled off in dashboard")
-            st.rerun()
+    if not is_admin:
+        st.caption("🔒 *Kill switch and account reset are restricted to Administrator accounts.*")
     else:
-        st.success("Operational - Virtual trading allowed")
-        if st.button("ACTIVATE EMERGENCY KILL SWITCH", type="primary", use_container_width=True):
-            api_client.toggle_kill_switch(activate=True, reason="User activated emergency stop")
-            st.rerun()
-
-    st.divider()
-    with st.expander("🔄 Reset Virtual Account (Clean Slate)"):
-        st.caption(f"Clears existing orders/positions and resets starting capital to {curr_sym}{default_cap:,.2f} for fresh trading with real market prices.")
-        if st.button(f"Confirm Reset to {curr_sym}{default_cap:,.0f}", use_container_width=True, type="secondary"):
-            res = api_client.reset_paper_account(currency=active_currency, initial_capital=default_cap)
-            if res.get("error"):
-                st.error(f"Reset failed: {res.get('message')}")
-            else:
-                st.success(f"Account successfully reset to {curr_sym}{default_cap:,.2f}!")
+        if kill_switch_active:
+            st.error("⚠️ KILL SWITCH ACTIVE - Order placement halted")
+            if st.button("Deactivate Kill Switch", use_container_width=True):
+                api_client.toggle_kill_switch(activate=False, reason="User toggled off in dashboard")
                 st.rerun()
+        else:
+            st.success("Operational - Virtual trading allowed")
+            if st.button("ACTIVATE EMERGENCY KILL SWITCH", type="primary", use_container_width=True):
+                api_client.toggle_kill_switch(activate=True, reason="User activated emergency stop")
+                st.rerun()
+
+        st.divider()
+        with st.expander("🔄 Reset Virtual Account (Clean Slate)"):
+            st.caption(f"Clears existing orders/positions and resets starting capital to {curr_sym}{default_cap:,.2f} for fresh trading with real market prices.")
+            if st.button(f"Confirm Reset to {curr_sym}{default_cap:,.0f}", use_container_width=True, type="secondary"):
+                res = api_client.reset_paper_account(currency=active_currency, initial_capital=default_cap)
+                if res.get("error"):
+                    st.error(f"Reset failed: {res.get('message')}")
+                else:
+                    st.success(f"Account successfully reset to {curr_sym}{default_cap:,.2f}!")
+                    st.rerun()
 
 
 # --- Main Dashboard Header App Bar ---
@@ -434,6 +531,7 @@ daemon_badge_class = "pill-open" if daemon_active else "pill-closed"
 daemon_badge_text = "24/7 DAEMON: ACTIVE" if daemon_active else "24/7 DAEMON: STANDBY"
 session_badge_class = "pill-open" if is_open else "pill-closed"
 session_badge_text = f"{active_market} SESSION: OPEN" if is_open else f"{active_market} SESSION: CLOSED"
+user_badge_text = f"👤 {current_user.get('username', 'trader').upper()} ({user_role.upper()})"
 
 st.markdown(
     f"""
@@ -446,6 +544,7 @@ st.markdown(
             <div class="brand-sub">Institutional Quantitative Analytics • Multi-Factor Confluence Strategy • Broker Independent ({active_currency})</div>
         </div>
         <div class="status-capsules">
+            <span class="status-pill {'pill-paper' if is_admin else 'pill-daemon'}">{user_badge_text}</span>
             <span class="status-pill {session_badge_class}">● {session_badge_text}</span>
             <span class="status-pill {daemon_badge_class}">● {daemon_badge_text}</span>
             <span class="status-pill pill-paper">VIRTUAL SIMULATION</span>
@@ -1045,7 +1144,7 @@ with tab_health:
 
     st.divider()
 
-    st.markdown(f"#### **Active Universe Coverage ({active_market} Market — {len(universe):,} Listed Equities)**")
+    st.markdown("#### **Active Universe Coverage ({active_market} Market — {len(universe):,} Listed Equities)**")
     st.dataframe(
         universe,
         use_container_width=True,
@@ -1060,6 +1159,27 @@ with tab_health:
             "market": "Market",
         },
     )
+
+    st.divider()
+
+    st.markdown("#### **User Profile & Programmatic API Access**")
+    p_col1, p_col2 = st.columns(2)
+    with p_col1:
+        st.write(f"- **Username:** `{current_user.get('username')}`")
+        st.write(f"- **Email:** `{current_user.get('email')}`")
+        st.write(f"- **Assigned RBAC Role:** `{user_role.upper()}`")
+        st.write(f"- **Account Scope:** `{current_user.get('username')}'s {active_currency} Account`")
+    with p_col2:
+        st.write("- **Programmatic API Key (`X-API-Key` header):**")
+        api_key_val = current_user.get("api_key") or "None configured"
+        st.code(api_key_val, language="bash")
+        if st.button("🔑 Generate / Rotate API Key"):
+            rot_resp = api_client.generate_api_key()
+            if rot_resp.get("api_key"):
+                current_user["api_key"] = rot_resp["api_key"]
+                st.session_state["user_profile"] = current_user
+                st.success("New API key generated successfully!")
+                st.rerun()
 
 
 # --- Background Live Polling & Autonomous Trading Loop ---

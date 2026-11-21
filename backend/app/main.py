@@ -11,8 +11,8 @@ Provides:
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import logging
-from typing import Any, Dict
-from fastapi import FastAPI, HTTPException, status
+from typing import Any, Dict, Optional
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -24,10 +24,13 @@ from backend.app.core.market_schedule import (
     is_market_open,
     is_us_market_open,
 )
+from backend.app.api.deps import get_optional_user
+from database.models import UserModel, UserRole
 from backend.app.api.market_data import router as market_data_router
 from backend.app.api.indicators import router as indicators_router
 from backend.app.api.strategies import router as strategies_router
 from backend.app.api.ai_analysis import router as ai_analysis_router
+from backend.app.api.auth import router as auth_router
 from backend.app.api.trading import router as trading_router
 from backend.app.api.auto_trader import router as auto_trader_router
 from backend.app.api.backtest import router as backtest_router
@@ -100,6 +103,7 @@ app.add_middleware(
 )
 
 # Register API Routers
+app.include_router(auth_router)
 app.include_router(market_data_router)
 app.include_router(indicators_router)
 app.include_router(strategies_router)
@@ -244,10 +248,20 @@ async def system_status() -> Dict[str, Any]:
     summary="Toggle Emergency Kill Switch",
     tags=["System"],
 )
-async def toggle_kill_switch(payload: KillSwitchRequest) -> Dict[str, Any]:
+async def toggle_kill_switch(
+    payload: KillSwitchRequest,
+    current_user: Optional[UserModel] = Depends(get_optional_user),
+) -> Dict[str, Any]:
     """
     Emergency kill switch to halt all paper trade placement.
+    Restricted to Administrator role when user credentials are provided.
     """
+    if current_user and current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required to toggle kill switch.",
+        )
+
     previous_state = settings.PAPER_TRADING_KILL_SWITCH
     settings.PAPER_TRADING_KILL_SWITCH = payload.activate
 
