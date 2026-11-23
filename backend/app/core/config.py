@@ -79,9 +79,9 @@ if HAS_PYDANTIC:
         MARKET_OPEN_TIME: str = "09:15"
         MARKET_CLOSE_TIME: str = "15:30"
 
-        MAX_RISK_PER_TRADE: float = 0.01
-        MAX_OPEN_POSITIONS: int = 5
-        MAX_ALLOCATION_PER_POSITION: float = 0.20
+        MAX_RISK_PER_TRADE: float = 0.005
+        MAX_OPEN_POSITIONS: int = 2
+        MAX_ALLOCATION_PER_POSITION: float = 0.10
         DEFAULT_RISK_REWARD_RATIO: float = 2.0
         MIN_STOP_LOSS_PCT: float = 0.015
 
@@ -211,9 +211,9 @@ else:
             self.MARKET_OPEN_TIME: str = _get("MARKET_OPEN_TIME", "09:15", str)
             self.MARKET_CLOSE_TIME: str = _get("MARKET_CLOSE_TIME", "15:30", str)
 
-            self.MAX_RISK_PER_TRADE: float = _get("MAX_RISK_PER_TRADE", 0.01, float)
-            self.MAX_OPEN_POSITIONS: int = _get("MAX_OPEN_POSITIONS", 5, int)
-            self.MAX_ALLOCATION_PER_POSITION: float = _get("MAX_ALLOCATION_PER_POSITION", 0.20, float)
+            self.MAX_RISK_PER_TRADE: float = _get("MAX_RISK_PER_TRADE", 0.005, float)
+            self.MAX_OPEN_POSITIONS: int = _get("MAX_OPEN_POSITIONS", 2, int)
+            self.MAX_ALLOCATION_PER_POSITION: float = _get("MAX_ALLOCATION_PER_POSITION", 0.10, float)
             self.DEFAULT_RISK_REWARD_RATIO: float = _get("DEFAULT_RISK_REWARD_RATIO", 2.0, float)
             self.MIN_STOP_LOSS_PCT: float = _get("MIN_STOP_LOSS_PCT", 0.015, float)
 

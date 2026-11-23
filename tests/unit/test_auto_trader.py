@@ -28,16 +28,16 @@ class TestAutoTraderAndTradingView(unittest.TestCase):
         """Verify default configuration parameters of AutoTraderConfig."""
         cfg = AutoTraderConfig()
         self.assertFalse(cfg.enabled)
-        self.assertEqual(cfg.min_confluence_score, 70)
+        self.assertEqual(cfg.min_confluence_score, 85)
         self.assertTrue(cfg.require_ai_approval)
-        self.assertTrue(cfg.auto_exit_on_reversal)
-        self.assertEqual(cfg.max_open_positions, 5)
+        self.assertFalse(cfg.auto_exit_on_reversal)
+        self.assertEqual(cfg.max_open_positions, 2)
         self.assertFalse(cfg.enforce_market_hours)
         self.assertEqual(cfg.timeframe, "1d")
 
         d = cfg.to_dict()
         self.assertIsInstance(d, dict)
-        self.assertEqual(d["min_confluence_score"], 70)
+        self.assertEqual(d["min_confluence_score"], 85)
 
     def test_decision_schema_and_history_fifo(self):
         """Verify AutoTraderDecision schema and FIFO max-size history eviction."""

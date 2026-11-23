@@ -38,10 +38,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AutoTraderConfig:
     enabled: bool = False
-    min_confluence_score: int = 70
+    min_confluence_score: int = 85
     require_ai_approval: bool = True
-    auto_exit_on_reversal: bool = True
-    max_open_positions: int = 5
+    auto_exit_on_reversal: bool = False
+    max_open_positions: int = 2
     enforce_market_hours: bool = False
     timeframe: str = "1d"
     allow_synthetic: bool = False
@@ -224,19 +224,26 @@ class AutoTradingBot:
                         existing_symbols.discard(pos.symbol)
                     continue
 
-                # Check Strategy Reversal Exit (if enabled)
+                # Check Strategy Reversal Exit (if enabled with min 240 mins holding time guardrail)
                 if cfg.auto_exit_on_reversal:
-                    full_batch = self.market_provider.fetch_historical_ohlcv(pos.symbol, timeframe=cfg.timeframe, period="6mo")
-                    if full_batch.candles and len(full_batch.candles) >= 50:
-                        rev_signal = self.strategy.generate_signal(pos.symbol, full_batch.candles)
-                        if rev_signal.action == SignalAction.SELL:
-                            success, order, err = await PaperTradingEngine.close_position(
-                                session,
-                                position_id=pos.id,
-                                exit_price=current_price,
-                                enforce_market_hours=cfg.enforce_market_hours,
-                                reason=f"Autonomous AI: Technical Reversal to SELL ({rev_signal.primary_trigger})",
-                            )
+                    holding_mins = (
+                        (datetime.now(timezone.utc) - pos.opened_at).total_seconds() / 60.0
+                        if pos.opened_at
+                        else 999.0
+                    )
+                    # Protect against high-frequency whipsaw: only allow reversal exits after 4 hours of holding
+                    if holding_mins >= 240.0:
+                        full_batch = self.market_provider.fetch_historical_ohlcv(pos.symbol, timeframe=cfg.timeframe, period="6mo")
+                        if full_batch.candles and len(full_batch.candles) >= 50:
+                            rev_signal = self.strategy.generate_signal(pos.symbol, full_batch.candles)
+                            if rev_signal.action == SignalAction.SELL:
+                                success, order, err = await PaperTradingEngine.close_position(
+                                    session,
+                                    position_id=pos.id,
+                                    exit_price=current_price,
+                                    enforce_market_hours=cfg.enforce_market_hours,
+                                    reason=f"Autonomous AI: Technical Reversal to SELL ({rev_signal.primary_trigger})",
+                                )
                             if success and order:
                                 pnl_val = float(pos.realized_pnl_inr)
                                 dec = AutoTraderDecision(

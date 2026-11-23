@@ -491,7 +491,7 @@ with st.sidebar:
     col_s1.metric("Equity", f"{curr_sym}{equity_val:,.2f}")
     col_s2.metric("Cash", f"{curr_sym}{cash_val:,.2f}")
     st.metric("Total P&L", f"{curr_sym}{total_pnl:+,.2f}", delta=f"{portfolio.get('return_on_initial_capital_pct', 0.0):+.2f}%")
-    st.caption(f"Active Positions: {open_count} / 5 max")
+    st.caption(f"Active Positions: {open_count} / 2 max (Min-Risk Guardrail)")
 
     st.divider()
 
@@ -779,12 +779,20 @@ with tab_autotrader:
 
     with col_ctrl_right:
         st.markdown("#### **Risk & Strategy Parameters**")
+        st.markdown(
+            """
+            <div style="background: rgba(0, 230, 118, 0.08); border: 1px solid rgba(0, 230, 118, 0.25); border-radius: 6px; padding: 6px 12px; margin-bottom: 12px; font-size: 11px; color: #00E676; font-family: 'JetBrains Mono', monospace;">
+                🛡️ MINIMUM RISK PROFILE: 85 Confluence • 0.5% Risk Budget • Max 2 Positions • Reversal Churn Blocked
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         with st.form("auto_trader_config_form"):
-            new_score = st.slider("Minimum Confluence Score Threshold", min_value=50, max_value=95, value=bot_cfg.get("min_confluence_score", 70), step=5)
+            new_score = st.slider("Minimum Confluence Score Threshold", min_value=50, max_value=95, value=bot_cfg.get("min_confluence_score", 85), step=5)
             new_ai_gate = st.checkbox("Require Gemini AI Confirmation Gate", value=bot_cfg.get("require_ai_approval", True))
-            new_rev_exit = st.checkbox("Auto-Exit Position on Strategy Reversal to SELL", value=bot_cfg.get("auto_exit_on_reversal", True))
+            new_rev_exit = st.checkbox("Auto-Exit Position on Strategy Reversal to SELL", value=bot_cfg.get("auto_exit_on_reversal", False))
             new_enforce_hours = st.checkbox("Enforce Strict Exchange Session Hours", value=bot_cfg.get("enforce_market_hours", False))
-            new_max_pos = st.number_input("Maximum Concurrent Open Positions", min_value=1, max_value=10, value=bot_cfg.get("max_open_positions", 5))
+            new_max_pos = st.number_input("Maximum Concurrent Open Positions", min_value=1, max_value=5, value=bot_cfg.get("max_open_positions", 2))
 
             save_cfg = st.form_submit_button("💾 Save Auto-Trader Settings", use_container_width=True)
             if save_cfg:
