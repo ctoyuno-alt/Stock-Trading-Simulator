@@ -70,9 +70,10 @@ class AutoTraderDecision:
     order_id: Optional[str] = None
     pnl: Optional[float] = None
     score: Optional[int] = None
+    user_id: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "timestamp": self.timestamp,
             "symbol": self.symbol,
             "market": self.market,
@@ -83,6 +84,9 @@ class AutoTraderDecision:
             "pnl": self.pnl,
             "score": self.score,
         }
+        if self.user_id is not None:
+            d["user_id"] = self.user_id
+        return d
 
 
 class AutoTradingBot:
@@ -96,8 +100,14 @@ class AutoTradingBot:
         self._history: deque[AutoTraderDecision] = deque(maxlen=max_history_size)
         self.last_cycle_at: Optional[datetime] = None
 
-    def get_history(self) -> List[Dict[str, Any]]:
-        return [d.to_dict() for d in reversed(self._history)]
+    def get_history(self, user_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        if user_id is None:
+            return [d.to_dict() for d in reversed(self._history)]
+        return [
+            d.to_dict()
+            for d in reversed(self._history)
+            if getattr(d, "user_id", None) is None or d.user_id == user_id
+        ]
 
     def clear_history(self) -> None:
         self._history.clear()
@@ -110,6 +120,7 @@ class AutoTradingBot:
         session: Any,
         market: str = "IN",
         config_override: Optional[AutoTraderConfig] = None,
+        user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Executes a single autonomous evaluation and execution cycle for the specified market:
@@ -123,7 +134,7 @@ class AutoTradingBot:
         self.last_cycle_at = datetime.now(timezone.utc)
 
         # Retrieve relevant paper account
-        account = await PaperTradingEngine.get_or_create_account(session, currency=target_currency)
+        account = await PaperTradingEngine.get_or_create_account(session, currency=target_currency, user_id=user_id)
         await PaperTradingEngine.update_portfolio_equity(session, account)
 
         try:
@@ -177,6 +188,7 @@ class AutoTradingBot:
                             executed=True,
                             order_id=order.client_order_id,
                             pnl=pnl_val,
+                            user_id=user_id,
                         )
                         self.record_decision(dec)
                         cycle_decisions.append(dec)
@@ -204,6 +216,7 @@ class AutoTradingBot:
                             executed=True,
                             order_id=order.client_order_id,
                             pnl=pnl_val,
+                            user_id=user_id,
                         )
                         self.record_decision(dec)
                         cycle_decisions.append(dec)
@@ -235,6 +248,7 @@ class AutoTradingBot:
                                     executed=True,
                                     order_id=order.client_order_id,
                                     pnl=pnl_val,
+                                    user_id=user_id,
                                 )
                                 self.record_decision(dec)
                                 cycle_decisions.append(dec)
@@ -250,6 +264,7 @@ class AutoTradingBot:
                     action="HOLD",
                     reason=f"Active position holding safely @ {current_price} (Unrealized P&L: {pos.unrealized_pnl_inr})",
                     executed=False,
+                    user_id=user_id,
                 )
                 cycle_decisions.append(dec)
 
@@ -329,6 +344,7 @@ class AutoTradingBot:
                             quantity=None,  # 1% equity risk positioning
                             enforce_market_hours=cfg.enforce_market_hours,
                             reason=f"Autonomous AI: Confluence {signal.technical_score}/100, AI: {ai_opinion}",
+                            user_id=user_id,
                         )
 
                         if success and order:
@@ -345,6 +361,7 @@ class AutoTradingBot:
                                 executed=True,
                                 order_id=order.client_order_id,
                                 score=signal.technical_score,
+                                user_id=user_id,
                             )
                             self.record_decision(dec)
                             cycle_decisions.append(dec)
@@ -357,6 +374,7 @@ class AutoTradingBot:
                                 reason=f"Order rejected: {err}",
                                 executed=False,
                                 score=signal.technical_score,
+                                user_id=user_id,
                             )
                             self.record_decision(dec)
                             cycle_decisions.append(dec)
@@ -369,6 +387,7 @@ class AutoTradingBot:
                             reason=f"AI gate declined entry (Stance: {ai_opinion}, Technical Score: {signal.technical_score})",
                             executed=False,
                             score=signal.technical_score,
+                            user_id=user_id,
                         )
                         self.record_decision(dec)
                         cycle_decisions.append(dec)
@@ -381,6 +400,7 @@ class AutoTradingBot:
                         reason=f"Signal {signal.action.value} (Score {signal.technical_score}/{cfg.min_confluence_score})",
                         executed=False,
                         score=signal.technical_score,
+                        user_id=user_id,
                     )
                     # Don't flood history with passive skips, only add to cycle
                     cycle_decisions.append(dec)
@@ -396,6 +416,8 @@ class AutoTradingBot:
             "cycle_timestamp": cycle_time_str,
             "market": market,
             "currency": target_currency,
+            "user_id": user_id,
+            "account_name": account.account_name,
             "orders_executed_count": len(orders_executed),
             "orders_executed": orders_executed,
             "positions_closed_count": len(positions_closed),

@@ -14,6 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.api.deps import get_optional_user
+from database.models import UserModel
 from database.session import get_db
 from trading.auto_trader import auto_trading_bot, AutoTraderConfig
 
@@ -51,13 +53,16 @@ class AutoTraderTickRequest(BaseModel):
 
 
 @router.get("/status", summary="Get Auto-Trader Status & Config")
-async def get_status() -> Dict[str, Any]:
-    """Returns current configuration, last execution timestamp, and recent decision log."""
+async def get_status(
+    current_user: Optional[UserModel] = Depends(get_optional_user),
+) -> Dict[str, Any]:
+    """Returns current configuration, last execution timestamp, and recent decision log scoped to user."""
+    user_id = current_user.id if current_user else None
     return {
         "config": auto_trading_bot.config.to_dict(),
         "last_cycle_at": auto_trading_bot.last_cycle_at.isoformat() if auto_trading_bot.last_cycle_at else None,
         "history_count": len(auto_trading_bot._history),
-        "recent_decisions": auto_trading_bot.get_history(),
+        "recent_decisions": auto_trading_bot.get_history(user_id=user_id),
     }
 
 
@@ -94,6 +99,7 @@ async def trigger_cycle(
     enforce_market_hours: Optional[bool] = Query(default=None),
     timeframe: Optional[str] = Query(default=None, pattern="^(1d|1h|15m|5m)$"),
     payload: Optional[AutoTraderTickRequest] = None,
+    current_user: Optional[UserModel] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """
@@ -104,6 +110,7 @@ async def trigger_cycle(
     """
     active_market = payload.market if payload and payload.market else market
     active_market = active_market.upper()
+    user_id = current_user.id if current_user else None
 
     # Clone configuration for override if needed
     cfg_override = AutoTraderConfig(
@@ -129,6 +136,7 @@ async def trigger_cycle(
             session=db,
             market=active_market,
             config_override=cfg_override,
+            user_id=user_id,
         )
         return {
             "status": "success",

@@ -226,6 +226,58 @@ class TestAutoTraderAndTradingView(unittest.TestCase):
             mock_close.assert_called_once()
             self.assertIn("Stop-Loss Triggered", mock_close.call_args[1]["reason"])
 
+    @patch("trading.engine.PaperTradingEngine.execute_buy", new_callable=AsyncMock)
+    @patch("trading.engine.PaperTradingEngine.get_or_create_account", new_callable=AsyncMock)
+    @patch("trading.engine.PaperTradingEngine.update_portfolio_equity", new_callable=AsyncMock)
+    def test_run_cycle_multi_user_scoping(self, mock_equity, mock_acct, mock_buy):
+        """Verify run_cycle scopes account and order execution to the requested user_id."""
+        import asyncio
+
+        fake_account = MagicMock()
+        fake_account.id = 42
+        fake_account.account_name = "User #42 INR Account"
+        fake_account.equity_inr = Decimal("100000.00")
+        fake_account.cash_balance_inr = Decimal("100000.00")
+        mock_acct.return_value = fake_account
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        fake_order = MagicMock()
+        fake_order.client_order_id = "ORD-USER-42"
+        fake_order.quantity = 5
+        fake_order.executed_price = Decimal("2500.00")
+        mock_buy.return_value = (True, fake_order, None)
+
+        fake_signal = TradeSignal(
+            symbol="RELIANCE",
+            timestamp=datetime.now(timezone.utc),
+            action=SignalAction.BUY,
+            strength=SignalStrength.STRONG,
+            primary_trigger="Bullish EMA Cross",
+            entry_price=Decimal("2500.00"),
+            suggested_stop_loss=Decimal("2450.00"),
+            suggested_take_profit=Decimal("2600.00"),
+            risk_reward_ratio=2.0,
+            stop_loss_pct=2.0,
+            target_profit_pct=4.0,
+            technical_score=85,
+            confirming_factors=[],
+            conflicting_factors=[],
+        )
+
+        with patch.object(self.bot.strategy, "generate_signal", return_value=fake_signal):
+            cfg = AutoTraderConfig(enabled=True, min_confluence_score=70, require_ai_approval=False, max_open_positions=1, allow_synthetic=True)
+            result = asyncio.run(self.bot.run_cycle(session=mock_session, market="IN", config_override=cfg, user_id=42))
+
+            self.assertEqual(result["user_id"], 42)
+            self.assertEqual(result["account_name"], "User #42 INR Account")
+            mock_acct.assert_called_with(mock_session, currency="INR", user_id=42)
+            self.assertTrue(mock_buy.called)
+            self.assertEqual(mock_buy.call_args[1]["user_id"], 42)
+
 
 if __name__ == "__main__":
     unittest.main()

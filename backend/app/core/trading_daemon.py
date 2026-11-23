@@ -102,7 +102,7 @@ class TradingDaemon:
         logger.info("Trading daemon loop terminated.")
 
     async def _execute_cycle(self) -> None:
-        """Executes a single evaluation pass for each active market."""
+        """Executes an evaluation pass across all active user accounts for each active market."""
         self.last_cycle_at = datetime.now(timezone.utc)
         self.cycles_completed += 1
 
@@ -120,18 +120,40 @@ class TradingDaemon:
                     logger.warning(f"Daemon skipping {market}: Daily Circuit Breaker is active.")
                     continue
 
-                # Run autonomous cycle on database session
+                # Query all active registered user IDs
+                target_user_ids: List[Optional[int]] = []
                 try:
-                    result = await auto_trading_bot.run_cycle(
-                        session=session,
-                        market=market,
-                        config_override=cfg,
-                    )
-                    # Notify on orders executed
-                    if result.get("orders_executed_count", 0) > 0:
-                        logger.info(f"Daemon executed {result['orders_executed_count']} order(s) in {market} market.")
-                except Exception as cycle_err:
-                    logger.warning(f"Daemon error executing {market} cycle: {str(cycle_err)}")
+                    from sqlalchemy import select
+                    from database.models import UserModel
+                    user_stmt = select(UserModel.id).where(UserModel.is_active == True)
+                    user_res = await session.execute(user_stmt)
+                    target_user_ids = list(user_res.scalars().all())
+                except Exception as db_err:
+                    logger.debug(f"Could not query active users: {db_err}")
+
+                if not target_user_ids:
+                    target_user_ids = [None]
+
+                # Run autonomous cycle for each user account
+                for uid in target_user_ids:
+                    try:
+                        result = await auto_trading_bot.run_cycle(
+                            session=session,
+                            market=market,
+                            config_override=cfg,
+                            user_id=uid,
+                        )
+                        # Notify on orders executed
+                        if result.get("orders_executed_count", 0) > 0:
+                            acc_label = result.get("account_name") or f"User #{uid}"
+                            logger.info(
+                                f"Daemon executed {result['orders_executed_count']} order(s) "
+                                f"in {market} market for {acc_label}."
+                            )
+                    except Exception as cycle_err:
+                        logger.warning(
+                            f"Daemon error executing {market} cycle for User #{uid}: {str(cycle_err)}"
+                        )
 
             break
 

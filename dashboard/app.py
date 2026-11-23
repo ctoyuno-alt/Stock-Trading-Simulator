@@ -725,7 +725,8 @@ with tab_ai:
 # ==============================================================================
 with tab_autotrader:
     st.markdown(f"### **🤖 Autonomous AI Auto-Trading Engine ({active_market} Market — {active_currency})**")
-    st.caption("Fully automated, hands-free order execution and position management powered by quantitative strategy confluence and Google Gemini AI.")
+    active_account_label = f"{current_user.get('username')}'s Account" if current_user.get("username") else "Primary Account"
+    st.caption(f"Fully automated, hands-free order execution powered by quantitative confluence & Gemini AI. Currently trading in: **{active_account_label}** ({active_currency}). 24/7 background daemon actively manages all registered accounts.")
 
     # Fetch Auto-Trader Status from Backend
     bot_status = api_client.get_auto_trader_status()
@@ -760,7 +761,7 @@ with tab_autotrader:
         col_act1, col_act2 = st.columns(2)
         with col_act1:
             if st.button("⚡ Run AI Auto-Trade Cycle Now", type="primary", use_container_width=True):
-                with st.spinner(f"Scanning {active_market} universe, verifying AI gates, and managing positions..."):
+                with st.spinner(f"Scanning {active_market} universe for {active_account_label}, verifying AI gates, and managing positions..."):
                     tick_res = api_client.run_auto_trader_tick(market=active_market, timeframe=timeframe)
                 if tick_res.get("error"):
                     st.error(f"Auto-Trader cycle failed: {tick_res.get('message')}")
@@ -768,7 +769,8 @@ with tab_autotrader:
                     cycle = tick_res.get("cycle_result", {})
                     n_exec = cycle.get("orders_executed_count", 0)
                     n_closed = cycle.get("positions_closed_count", 0)
-                    st.success(f"Cycle completed! Executed: {n_exec} orders | Closed: {n_closed} positions.")
+                    target_acc = cycle.get("account_name", active_account_label)
+                    st.success(f"Cycle completed for {target_acc}! Executed: {n_exec} orders | Closed: {n_closed} positions.")
                     st.rerun()
         with col_act2:
             if st.button("🗑️ Clear Decision Log", use_container_width=True):
