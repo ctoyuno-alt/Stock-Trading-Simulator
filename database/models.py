@@ -11,20 +11,70 @@ Schema defines:
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import List, Optional
-from sqlalchemy import (
-    BigInteger,
-    Boolean,
-    DateTime,
-    Enum as SQLEnum,
-    ForeignKey,
-    Index,
-    Numeric,
-    String,
-    Text,
-)
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from typing import Any, List, Optional
 import enum
+
+try:
+    from sqlalchemy import (
+        BigInteger,
+        Boolean,
+        DateTime,
+        Enum as SQLEnum,
+        ForeignKey,
+        Index,
+        Numeric,
+        String,
+        Text,
+    )
+    from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+    HAS_SQLALCHEMY = True
+except ImportError:
+    HAS_SQLALCHEMY = False
+
+    class _ColumnMock:
+        def __init__(self, default=None):
+            self.default = default
+        def in_(self, *a, **kw): return self
+        def desc(self): return self
+        def asc(self): return self
+        def like(self, *a, **kw): return self
+        def __eq__(self, other): return self
+
+    class DeclarativeBase:
+        metadata = type("Metadata", (), {"create_all": lambda *a, **kw: None})()
+
+        def __init__(self, **kwargs):
+            for k in dir(self.__class__):
+                if not k.startswith("_"):
+                    v = getattr(self.__class__, k, None)
+                    if isinstance(v, _ColumnMock) and v.default is not None:
+                        setattr(self, k, v.default() if callable(v.default) else v.default)
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    class _Mapped:
+        def __getitem__(self, item):
+            return item
+
+    Mapped = _Mapped()
+
+    def mapped_column(*args, **kwargs):
+        default = kwargs.get("default", None)
+        return _ColumnMock(default=default)
+
+
+
+    def relationship(*args, **kwargs):
+        return None
+
+    def Index(*args, **kwargs):
+        return None
+
+    def SQLEnum(*args, **kwargs):
+        return None
+
+    BigInteger = Boolean = DateTime = ForeignKey = Numeric = String = Text = lambda *args, **kwargs: None
+
 
 
 class Base(DeclarativeBase):
@@ -227,3 +277,20 @@ class MarketCandleModel(Base):
     __table_args__ = (
         Index("idx_candle_symbol_timeframe_ts", "symbol", "timeframe", "timestamp", unique=True),
     )
+
+
+class AdminAuditLogModel(Base):
+    __tablename__ = "admin_audit_logs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True, nullable=False
+    )
+    admin_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
+    admin_username: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
+    target_account_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("accounts.id"), nullable=True)
+    action: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+

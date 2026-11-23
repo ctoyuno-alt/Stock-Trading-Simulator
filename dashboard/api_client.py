@@ -11,6 +11,7 @@ import os
 from typing import Any, Dict, List, Optional
 import urllib.request
 import urllib.error
+import urllib.parse
 
 # Resolve backend URL from environment
 BACKEND_BASE_URL = os.environ.get("BACKEND_INTERNAL_URL") or os.environ.get("BACKEND_URL") or "http://localhost:8000"
@@ -267,6 +268,89 @@ class DashboardAPIClient:
         if chat_id:
             payload["chat_id"] = chat_id
         return self._request("POST", "/api/v1/auto-trader/notifications/test", payload)
+
+    # --- Administrative Management (RBAC: Admin Only) ---
+    def get_admin_users(
+        self,
+        page: int = 1,
+        limit: int = 20,
+        role: Optional[str] = None,
+        is_active: Optional[bool] = None,
+        search: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Fetch paginated list of users with optional role, status, and search filters."""
+        query_parts = [f"page={page}", f"limit={limit}"]
+        if role and role != "All Roles":
+            query_parts.append(f"role={urllib.parse.quote(str(role).lower())}")
+        if is_active is not None:
+            query_parts.append(f"is_active={'true' if is_active else 'false'}")
+        if search:
+            query_parts.append(f"search={urllib.parse.quote(str(search).strip())}")
+        qs = f"?{'&'.join(query_parts)}"
+        return self._request("GET", f"/api/v1/admin/users{qs}")
+
+    def get_admin_user_details(self, user_id: int) -> Dict[str, Any]:
+        """Inspect specific user details, linked accounts, and open positions."""
+        return self._request("GET", f"/api/v1/admin/users/{user_id}")
+
+    def update_user_role(self, user_id: int, role: str) -> Dict[str, Any]:
+        """Update a user's RBAC role (ADMIN, TRADER, VIEWER)."""
+        return self._request("PATCH", f"/api/v1/admin/users/{user_id}/role", {"role": role})
+
+    def toggle_user_status(self, user_id: int, is_active: bool, reason: Optional[str] = None) -> Dict[str, Any]:
+        """Activate or deactivate a user account."""
+        payload: Dict[str, Any] = {"is_active": is_active}
+        if reason:
+            payload["reason"] = reason
+        return self._request("PATCH", f"/api/v1/admin/users/{user_id}/status", payload)
+
+    def fund_account(self, account_id: int, amount: float, reason: Optional[str] = None) -> Dict[str, Any]:
+        """Inject virtual paper trading capital into an account."""
+        payload: Dict[str, Any] = {"amount": amount}
+        if reason:
+            payload["reason"] = reason
+        return self._request("POST", f"/api/v1/admin/accounts/{account_id}/fund", payload)
+
+    def reset_account_admin(self, account_id: int, initial_capital: Optional[float] = None, reason: Optional[str] = None) -> Dict[str, Any]:
+        """Reset an account balance and wipe positions via admin endpoint."""
+        payload: Dict[str, Any] = {}
+        if initial_capital is not None:
+            payload["initial_capital"] = initial_capital
+        if reason:
+            payload["reason"] = reason
+        return self._request("POST", f"/api/v1/admin/accounts/{account_id}/reset", payload)
+
+    def delete_account_admin(self, account_id: int) -> Dict[str, Any]:
+        """Archive a paper trading account (is_active=False)."""
+        return self._request("DELETE", f"/api/v1/admin/accounts/{account_id}")
+
+    def rotate_user_api_key(self, user_id: int) -> Dict[str, Any]:
+        """Rotate and generate a fresh API key for target user."""
+        return self._request("POST", f"/api/v1/admin/users/{user_id}/api-key/rotate")
+
+    def revoke_user_api_key(self, user_id: int) -> Dict[str, Any]:
+        """Revoke API key for target user."""
+        return self._request("POST", f"/api/v1/admin/users/{user_id}/api-key/revoke")
+
+    def get_admin_audit_logs(
+        self,
+        page: int = 1,
+        limit: int = 50,
+        action: Optional[str] = None,
+        target_user_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Fetch historical administrative audit trail logs."""
+        query_parts = [f"page={page}", f"limit={limit}"]
+        if action and action != "All Actions":
+            query_parts.append(f"action={urllib.parse.quote(str(action))}")
+        if target_user_id is not None:
+            query_parts.append(f"target_user_id={target_user_id}")
+        qs = f"?{'&'.join(query_parts)}"
+        return self._request("GET", f"/api/v1/admin/audit-logs{qs}")
+
+    def get_admin_summary(self) -> Dict[str, Any]:
+        """Fetch administrative summary KPIs (users, accounts, capital, audit counts)."""
+        return self._request("GET", "/api/v1/admin/summary")
 
 
 api_client = DashboardAPIClient()
