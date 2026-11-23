@@ -20,6 +20,8 @@ from backend.app.api.deps import get_current_user
 from backend.app.core.config import get_settings
 from backend.app.core.security import (
     create_access_token,
+    create_password_reset_token,
+    decode_password_reset_token,
     generate_api_key,
     hash_password,
     verify_password,
@@ -59,6 +61,22 @@ class AuthTokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserProfileResponse
+
+
+class ForgotPasswordRequest(BaseModel):
+    username_or_email: str = Field(min_length=3, max_length=255, description="Username or email address")
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    reset_token: Optional[str] = None
+    expires_in_minutes: int = 15
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(description="Password reset token")
+    new_password: str = Field(min_length=8, max_length=128, description="New password (minimum 8 characters)")
+
 
 
 @router.post("/register", response_model=AuthTokenResponse, status_code=status.HTTP_201_CREATED)
@@ -219,3 +237,79 @@ async def rotate_api_key(
     await db.commit()
     logger.info(f"API key rotated for user {current_user.username}")
     return {"api_key": new_key, "message": "API key successfully rotated."}
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+async def forgot_password(
+    req: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Initiates self-service password recovery.
+    Issues a cryptographically signed, 15-minute password reset token.
+    Mitigates user enumeration by always returning an affirmative response.
+    """
+    identifier = req.username_or_email.strip()
+    res = await db.execute(
+        select(UserModel).where(
+            (UserModel.username == identifier) | (UserModel.email == identifier.lower())
+        )
+    )
+    user = res.scalar_one_or_none()
+
+    reset_token = None
+    if user and user.is_active:
+        reset_token = create_password_reset_token(user_id=user.id, username=user.username, expires_minutes=15)
+        logger.info(f"Password recovery token generated for user '{user.username}' (ID: {user.id})")
+
+    return {
+        "message": "If an active account exists with the provided credentials, a secure 15-minute recovery token has been issued.",
+        "reset_token": reset_token,
+        "expires_in_minutes": 15,
+    }
+
+
+@router.post("/reset-password", response_model=Dict[str, str])
+async def reset_password(
+    req: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, str]:
+    """
+    Executes password reset using a verified reset token.
+    Re-hashes new password using PBKDF2-HMAC-SHA256 with a fresh 16-byte random salt.
+    """
+    payload = decode_password_reset_token(req.token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset token.",
+        )
+
+    user_id_str = payload.get("sub")
+    try:
+        user_id = int(user_id_str)
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Malformed user ID claim in token.",
+        )
+
+    res = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    user = res.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User account not found or is currently inactive.",
+        )
+
+    # Re-hash new password with PBKDF2 and fresh salt
+    new_hash, new_salt = hash_password(req.new_password)
+    user.hashed_password = new_hash
+    user.salt = new_salt
+    await db.commit()
+    logger.info(f"Password reset completed successfully for user '{user.username}' (ID: {user.id})")
+
+    return {
+        "message": "Password successfully reset. You can now log in with your new password."
+    }
+

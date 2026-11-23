@@ -17,6 +17,7 @@ Features:
 import sys
 from pathlib import Path
 from datetime import datetime
+import secrets
 import streamlit as st
 
 # Ensure application root (/app or workspace root) is in Python sys.path
@@ -301,7 +302,7 @@ if not auth_token or not user_profile:
 
     auth_col1, auth_col2, auth_col3 = st.columns([1, 1.8, 1])
     with auth_col2:
-        tab_login, tab_register = st.tabs(["🔐 Sign In", "✨ Create Account"])
+        tab_login, tab_register, tab_forgot = st.tabs(["🔐 Sign In", "✨ Create Account", "🔑 Forgot Password?"])
         with tab_login:
             with st.form("login_form"):
                 st.markdown("#### **Access Your Terminal**")
@@ -342,6 +343,71 @@ if not auth_token or not user_profile:
                             st.session_state["auth_token"] = resp.get("access_token")
                             st.session_state["user_profile"] = resp.get("user")
                             st.rerun()
+
+        with tab_forgot:
+            st.markdown("#### **Account Recovery & Password Reset**")
+            st.caption("Recover access to your paper trading terminal using self-service token verification.")
+
+            # Step 1: Request Token
+            with st.form("forgot_password_request_form"):
+                st.markdown("##### **Step 1: Request 15-Min Recovery Token**")
+                reset_id = st.text_input("Username or Registered Email", placeholder="e.g. trader_one or trader@quantum.ai")
+                req_btn = st.form_submit_button("Generate Recovery Token", use_container_width=True)
+                if req_btn:
+                    if not reset_id.strip():
+                        st.error("Please enter your username or registered email address.")
+                    else:
+                        resp = api_client.forgot_password(reset_id.strip())
+                        if resp.get("error"):
+                            st.error(f"Error: {resp.get('message', 'Failed to generate recovery token')}")
+                        else:
+                            token = resp.get("reset_token")
+                            if token:
+                                st.session_state["cached_reset_token"] = token
+                                st.success(f"✅ Recovery token issued! Valid for {resp.get('expires_in_minutes', 15)} minutes.")
+                            else:
+                                st.info(resp.get("message"))
+
+            cached_token = st.session_state.get("cached_reset_token", "")
+            if cached_token:
+                st.markdown(
+                    f"""
+                    <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 12px; margin-top: 10px; margin-bottom: 12px;">
+                        <div style="font-size: 11px; font-weight: 600; color: #10B981; letter-spacing: 0.05em; text-transform: uppercase;">Active 15-Minute Recovery Token</div>
+                        <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; word-break: break-all; color: #F8FAFC; margin-top: 4px;">{cached_token}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            # Step 2: Apply Token and Set New Password
+            with st.form("reset_password_submit_form"):
+                st.markdown("##### **Step 2: Set New Secure Password**")
+                token_input = st.text_input(
+                    "Recovery Token",
+                    value=cached_token,
+                    placeholder="Paste 15-minute recovery token here",
+                )
+                new_pw = st.text_input("New Password", type="password", placeholder="Minimum 8 characters")
+                confirm_pw = st.text_input("Confirm New Password", type="password", placeholder="Re-type new password")
+                submit_reset = st.form_submit_button("Reset Password & Proceed to Login", use_container_width=True, type="primary")
+                if submit_reset:
+                    if not token_input.strip():
+                        st.error("Please provide the recovery token.")
+                    elif not new_pw or not confirm_pw:
+                        st.error("Please enter and confirm your new password.")
+                    elif len(new_pw) < 8:
+                        st.error("New password must be at least 8 characters long.")
+                    elif new_pw != confirm_pw:
+                        st.error("Passwords do not match. Please verify and retry.")
+                    else:
+                        resp = api_client.reset_password(token_input.strip(), new_pw)
+                        if resp.get("error"):
+                            st.error(f"Reset failed: {resp.get('message', 'Invalid or expired token')}")
+                        else:
+                            st.session_state.pop("cached_reset_token", None)
+                            st.success("🎉 Password successfully reset! Please click '🔐 Sign In' tab to log in.")
+
 
     st.stop()
 
@@ -1419,6 +1485,49 @@ if is_admin and tab_admin:
                         else:
                             st.success("API key revoked successfully!")
                             st.rerun()
+
+                # Administrative Password Reset
+                st.markdown("---")
+                st.markdown("##### **🔑 Administrative Password Override**")
+                st.caption(f"Directly reset credentials for `{target_user['username']}` with mandatory audit logging.")
+
+                col_pw_in, col_pw_gen = st.columns([2, 1])
+                with col_pw_gen:
+                    st.write("")
+                    st.write("")
+                    if st.button("🎲 Generate", key=f"btn_gen_pw_{target_user_id}", help="Generate temporary high-entropy password"):
+                        generated_pw = f"QT-{secrets.token_hex(4).upper()}#{secrets.token_urlsafe(4)}"
+                        st.session_state[f"gen_pw_{target_user_id}"] = generated_pw
+
+                cached_gen_pw = st.session_state.get(f"gen_pw_{target_user_id}", "")
+                with col_pw_in:
+                    admin_new_pw = st.text_input(
+                        "New Password",
+                        value=cached_gen_pw,
+                        type="password" if not cached_gen_pw else "default",
+                        placeholder="Min 8 characters",
+                        key=f"adm_new_pw_{target_user_id}",
+                    )
+
+                admin_pw_reason = st.text_input(
+                    "Override Reason (Optional)",
+                    placeholder="e.g. User requested unlock via support ticket",
+                    key=f"adm_pw_rsn_{target_user_id}",
+                )
+
+                if st.button("🔐 Override User Password", use_container_width=True, key=f"btn_ovr_pw_{target_user_id}"):
+                    effective_pw = admin_new_pw.strip() if admin_new_pw else ""
+                    if not effective_pw or len(effective_pw) < 8:
+                        st.error("Password must be at least 8 characters long.")
+                    else:
+                        resp = api_client.admin_reset_user_password(target_user_id, effective_pw, admin_pw_reason)
+                        if resp.get("error"):
+                            st.error(resp.get("message"))
+                        else:
+                            st.success(f"Password for '{target_user['username']}' successfully reset and logged to audit trail!")
+                            st.session_state.pop(f"gen_pw_{target_user_id}", None)
+                            st.rerun()
+
 
             with col_wb_right:
                 st.markdown("##### **Virtual Capital & Account Lifecycle**")

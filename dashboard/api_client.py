@@ -94,6 +94,15 @@ class DashboardAPIClient:
         """Rotates or creates a programmatic API key for the user."""
         return self._request("POST", "/api/v1/auth/api-key")
 
+    def forgot_password(self, username_or_email: str) -> Dict[str, Any]:
+        """Requests a 15-minute password reset recovery token."""
+        return self._request("POST", "/api/v1/auth/forgot-password", {"username_or_email": username_or_email})
+
+    def reset_password(self, token: str, new_password: str) -> Dict[str, Any]:
+        """Submits a password reset token and new password."""
+        return self._request("POST", "/api/v1/auth/reset-password", {"token": token, "new_password": new_password})
+
+
     # --- System & Health ---
     def get_system_status(self) -> Dict[str, Any]:
         return self._request("GET", "/api/v1/system/status")
@@ -331,6 +340,19 @@ class DashboardAPIClient:
     def revoke_user_api_key(self, user_id: int) -> Dict[str, Any]:
         """Revoke API key for target user."""
         return self._request("POST", f"/api/v1/admin/users/{user_id}/api-key/revoke")
+
+    def admin_reset_user_password(
+        self,
+        user_id: int,
+        new_password: str,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Administratively resets a user's password with audit logging."""
+        payload: Dict[str, Any] = {"new_password": new_password}
+        if reason:
+            payload["reason"] = reason
+        return self._request("PUT", f"/api/v1/admin/users/{user_id}/password", payload)
+
 
     def get_admin_audit_logs(
         self,

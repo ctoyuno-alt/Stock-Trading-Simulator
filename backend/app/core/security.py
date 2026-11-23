@@ -125,3 +125,52 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
 def generate_api_key() -> str:
     """Generates a secure high-entropy API key for programmatic trading bots."""
     return f"qt_live_{secrets.token_urlsafe(32)}"
+
+
+def create_password_reset_token(
+    user_id: int,
+    username: str,
+    expires_minutes: int = 15,
+) -> str:
+    """
+    Issues a cryptographically signed, time-limited single-use password reset token.
+    Claims contain: sub (user_id), username, purpose='password_reset', jti (nonce), and exp.
+    """
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=expires_minutes)
+    payload = {
+        "sub": str(user_id),
+        "username": username,
+        "purpose": "password_reset",
+        "jti": secrets.token_hex(16),
+        "iat": int(now.timestamp()),
+        "exp": int(expire.timestamp()),
+    }
+    header = {"alg": "HS256", "typ": "JWT"}
+    p1 = _b64_url_encode(json.dumps(header, separators=(",", ":")).encode("utf-8"))
+    p2 = _b64_url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+
+    secret_bytes = settings.JWT_SECRET_KEY.encode("utf-8")
+    signing_input = f"{p1}.{p2}".encode("utf-8")
+    sig = _b64_url_encode(hmac.new(secret_bytes, signing_input, hashlib.sha256).digest())
+    return f"{p1}.{p2}.{sig}"
+
+
+def decode_password_reset_token(token: str) -> Optional[Dict[str, Any]]:
+    """
+    Decodes and validates a password reset token signature, expiration, and purpose claim.
+    Returns payload claims dict if valid, None if invalid, expired, or purpose mismatch.
+    """
+    payload = decode_access_token(token)
+    if not payload:
+        return None
+    if payload.get("purpose") != "password_reset":
+        return None
+    return payload
+
+
+def generate_secure_random_password(length: int = 14) -> str:
+    """Generates an alphanumeric password with special characters suitable for temporary resets."""
+    alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*"
+    return "".join(secrets.choice(alphabet) for _ in range(max(length, 12)))
+

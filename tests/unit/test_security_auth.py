@@ -9,8 +9,11 @@ import unittest
 
 from backend.app.core.security import (
     create_access_token,
+    create_password_reset_token,
     decode_access_token,
+    decode_password_reset_token,
     generate_api_key,
+    generate_secure_random_password,
     hash_password,
     verify_password,
 )
@@ -108,6 +111,46 @@ class TestSecurityAuth(unittest.TestCase):
         self.assertEqual(UserRole.ADMIN.value, "admin")
         self.assertEqual(UserRole.TRADER.value, "trader")
         self.assertEqual(UserRole.VIEWER.value, "viewer")
+
+    def test_password_reset_token_issuance_and_decoding(self):
+        """Verify creation and decoding of time-limited password reset tokens."""
+        token = create_password_reset_token(user_id=105, username="algo_trader", expires_minutes=15)
+        self.assertIsInstance(token, str)
+        self.assertEqual(len(token.split(".")), 3)
+
+        payload = decode_password_reset_token(token)
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload.get("sub"), "105")
+        self.assertEqual(payload.get("username"), "algo_trader")
+        self.assertEqual(payload.get("purpose"), "password_reset")
+        self.assertIn("jti", payload)
+        self.assertIn("exp", payload)
+
+    def test_password_reset_token_purpose_mismatch(self):
+        """Verify that a standard JWT access token cannot be used as a password reset token."""
+        access_token = create_access_token({"sub": "105", "username": "algo_trader", "role": "trader"})
+        # Should be rejected because purpose != "password_reset"
+        self.assertIsNone(decode_password_reset_token(access_token))
+
+    def test_password_reset_token_expiration(self):
+        """Verify that an expired password reset token is strictly rejected."""
+        token = create_password_reset_token(user_id=105, username="algo_trader", expires_minutes=-1)
+        self.assertIsNone(decode_password_reset_token(token))
+
+    def test_password_reset_token_tampering(self):
+        """Verify that tampered password reset tokens are rejected."""
+        token = create_password_reset_token(user_id=105, username="algo_trader", expires_minutes=15)
+        parts = token.split(".")
+        tampered = parts[0] + "." + parts[1] + ".invalid_sig"
+        self.assertIsNone(decode_password_reset_token(tampered))
+
+    def test_generate_secure_random_password(self):
+        """Verify high-entropy random password generation."""
+        pw1 = generate_secure_random_password(16)
+        pw2 = generate_secure_random_password(16)
+        self.assertGreaterEqual(len(pw1), 16)
+        self.assertNotEqual(pw1, pw2)
+
 
 
 if __name__ == "__main__":

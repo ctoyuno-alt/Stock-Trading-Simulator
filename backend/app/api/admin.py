@@ -30,6 +30,7 @@ except ImportError:
             self.routes = []
         def get(self, *args, **kwargs): return lambda f: f
         def post(self, *args, **kwargs): return lambda f: f
+        def put(self, *args, **kwargs): return lambda f: f
         def patch(self, *args, **kwargs): return lambda f: f
         def delete(self, *args, **kwargs): return lambda f: f
     class HTTPException(Exception):
@@ -87,7 +88,11 @@ except ImportError:
     AsyncSession = Any  # type: ignore
 
 from backend.app.api.deps import require_admin
-from backend.app.core.security import generate_api_key
+from backend.app.core.security import (
+    generate_api_key,
+    generate_secure_random_password,
+    hash_password,
+)
 from database.models import (
     AccountModel,
     AdminAuditLogModel,
@@ -128,6 +133,12 @@ class FundAccountRequest(BaseModel):
 class ResetAccountRequest(BaseModel):
     initial_capital: Optional[float] = Field(default=None, gt=0, description="New baseline capital")
     reason: Optional[str] = Field(default=None, description="Reason for reset")
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str = Field(min_length=8, max_length=128, description="New password for user (minimum 8 chars)")
+    reason: Optional[str] = Field(default="Administrative password reset", description="Reason for reset")
+
 
 
 # --- Helper Functions ---
@@ -684,6 +695,54 @@ async def revoke_user_api_key(
         "message": "API key revoked successfully",
         "revoked": True,
     }
+
+
+@router.put("/users/{user_id}/password")
+async def admin_reset_user_password(
+    user_id: int,
+    payload: AdminResetPasswordRequest,
+    request: Request = None,
+    current_admin: UserModel = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Administratively resets a user's password.
+    Requires require_admin.
+    Re-hashes password with fresh PBKDF2-HMAC-SHA256 salt.
+    Persists immutable audit log entry.
+    """
+    res = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    target_user = res.scalar_one_or_none()
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with ID {user_id} not found",
+        )
+
+    new_hash, new_salt = hash_password(payload.new_password)
+    target_user.hashed_password = new_hash
+    target_user.salt = new_salt
+
+    client_ip = _extract_ip(request)
+    audit_detail = f"Admin '{current_admin.username}' reset password for user '{target_user.username}' (ID: {user_id}). Reason: {payload.reason or 'None'}"
+    await record_audit_log(
+        db=db,
+        admin=current_admin,
+        action="USER_PASSWORD_RESET",
+        target_user_id=user_id,
+        details=audit_detail,
+        ip_address=client_ip,
+    )
+    await db.commit()
+    logger.info(audit_detail)
+
+    return {
+        "status": "success",
+        "message": f"Password for user '{target_user.username}' has been successfully reset.",
+        "user_id": user_id,
+        "username": target_user.username,
+    }
+
 
 
 @router.get("/audit-logs")
