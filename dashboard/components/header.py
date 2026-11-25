@@ -2,6 +2,7 @@
 Institutional Top Header App Bar for Quantum Trader.
 """
 
+import textwrap
 from typing import Any, Dict, Optional
 
 try:
@@ -44,23 +45,21 @@ def render_top_header(state: Dict[str, Any], api_client: Optional[Any] = None) -
     session_badge_text = f"{active_market} SESSION: OPEN" if is_open else f"{active_market} SESSION: CLOSED"
     user_badge_text = f"👤 {username.upper()} ({user_role.upper()})"
 
-    st.markdown(
-        f"""
-        <div class="top-app-bar">
-            <div>
-                <div class="brand-title">
-                    <span>⚡ QUANTUM TRADER</span>
-                    <span class="status-pill pill-paper">{market_header_text}</span>
-                </div>
-                <div class="brand-sub">Institutional Quantitative Analytics • Multi-Factor Confluence Strategy • Broker Independent ({active_currency})</div>
-            </div>
-            <div class="status-capsules">
-                <span class="status-pill {'pill-paper' if is_admin else 'pill-daemon'}">{user_badge_text}</span>
-                <span class="status-pill {session_badge_class}">● {session_badge_text}</span>
-                <span class="status-pill {daemon_badge_class}">● {daemon_badge_text}</span>
-                <span class="status-pill pill-paper">VIRTUAL SIMULATION</span>
-            </div>
+    header_html = textwrap.dedent(f"""
+<div class="top-app-bar">
+    <div>
+        <div class="brand-title">
+            <span>⚡ QUANTUM TRADER</span>
+            <span class="status-pill pill-paper">{market_header_text}</span>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        <div class="brand-sub">Institutional Quantitative Analytics • Multi-Factor Confluence Strategy • Broker Independent ({active_currency})</div>
+    </div>
+    <div class="status-capsules">
+        <span class="status-pill {'pill-paper' if is_admin else 'pill-daemon'}">{user_badge_text}</span>
+        <span class="status-pill {session_badge_class}">● {session_badge_text}</span>
+        <span class="status-pill {daemon_badge_class}">● {daemon_badge_text}</span>
+        <span class="status-pill pill-paper">VIRTUAL SIMULATION</span>
+    </div>
+</div>
+""").strip()
+    st.markdown(header_html, unsafe_allow_html=True)

@@ -3,6 +3,7 @@ Live Scrolling Ticker Marquee for Quantum Trader.
 Institutional Bloomberg-style streaming quotes tape with pure CSS animation.
 """
 
+import textwrap
 from typing import Any, Dict, List, Optional
 
 try:
@@ -68,88 +69,82 @@ def render_ticker_tape(api_client: Optional[Any] = None, market: Optional[str] =
     """
     quotes = fetch_ticker_quotes(api_client)
 
-    # Build ticker item HTML
-    items_html = ""
-    for q in quotes:
-        is_pos = q["delta_pct"] >= 0
-        arrow = "▲" if is_pos else "▼"
-        color = "#00E676" if is_pos else "#FF3366"
-        sign = "+" if is_pos else ""
-        price_str = f"{q['currency']}{q['price']:,.2f}"
-        pct_str = f"{sign}{q['delta_pct']:.2f}%"
-
-        items_html += f"""
-        <div class="ticker-item">
-            <span class="ticker-sym">{q['symbol']}</span>
-            <span class="ticker-price">{price_str}</span>
-            <span class="ticker-delta" style="color: {color};">{arrow} {pct_str}</span>
-        </div>
-        """
+    # Build ticker item HTML inline to prevent Markdown 4-space code block interpretation
+    items_html = "".join([
+        (
+            f'<div class="ticker-item">'
+            f'<span class="ticker-sym">{q["symbol"]}</span>'
+            f'<span class="ticker-price">{q["currency"]}{q["price"]:,.2f}</span>'
+            f'<span class="ticker-delta" style="color: {"#00E676" if q["delta_pct"] >= 0 else "#FF3366"};">'
+            f'{"▲" if q["delta_pct"] >= 0 else "▼"} {"+" if q["delta_pct"] >= 0 else ""}{q["delta_pct"]:.2f}%</span>'
+            f'</div>'
+        )
+        for q in quotes
+    ])
 
     # Double items to create seamless infinite CSS loop
     marquee_content = items_html + items_html
 
-    ticker_html = f"""
-    <style>
-        .ticker-wrap {{
-            width: 100%;
-            overflow: hidden;
-            background: #0A0E17;
-            border: 1px solid #1E2638;
-            border-radius: 6px;
-            padding: 6px 0;
-            margin-bottom: 12px;
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
-            white-space: nowrap;
-            user-select: none;
-        }}
-        .ticker-track {{
-            display: inline-flex;
-            white-space: nowrap;
-            will-change: transform;
-            animation: ticker-scroll 38s linear infinite;
-        }}
-        .ticker-wrap:hover .ticker-track {{
-            animation-play-state: paused;
-        }}
-        .ticker-item {{
-            display: inline-flex;
-            align-items: center;
-            gap: 7px;
-            padding: 0 16px;
-            border-right: 1px solid rgba(255, 255, 255, 0.08);
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11.5px;
-        }}
-        .ticker-sym {{
-            font-weight: 700;
-            color: #E2E8F0;
-            letter-spacing: 0.03em;
-        }}
-        .ticker-price {{
-            color: #F8FAFC;
-            font-weight: 500;
-        }}
-        .ticker-delta {{
-            font-weight: 600;
-            font-size: 11px;
-        }}
-        @keyframes ticker-scroll {{
-            0% {{
-                transform: translateX(0);
-            }}
-            100% {{
-                transform: translateX(-50%);
-            }}
-        }}
-    </style>
-    <div class="ticker-wrap" title="Hover to pause tape">
-        <div class="ticker-track">
-            {marquee_content}
-        </div>
-    </div>
-    """
+    ticker_html = textwrap.dedent(f"""
+<style>
+.ticker-wrap {{
+    width: 100%;
+    overflow: hidden;
+    background: #0A0E17;
+    border: 1px solid #1E2638;
+    border-radius: 6px;
+    padding: 6px 0;
+    margin-bottom: 12px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+    white-space: nowrap;
+    user-select: none;
+}}
+.ticker-track {{
+    display: inline-flex;
+    white-space: nowrap;
+    will-change: transform;
+    animation: ticker-scroll 38s linear infinite;
+}}
+.ticker-wrap:hover .ticker-track {{
+    animation-play-state: paused;
+}}
+.ticker-item {{
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 16px;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+}}
+.ticker-sym {{
+    font-weight: 700;
+    color: #E2E8F0;
+    letter-spacing: 0.03em;
+}}
+.ticker-price {{
+    color: #F8FAFC;
+    font-weight: 500;
+}}
+.ticker-delta {{
+    font-weight: 600;
+    font-size: 11px;
+}}
+@keyframes ticker-scroll {{
+    0% {{
+        transform: translateX(0);
+    }}
+    100% {{
+        transform: translateX(-50%);
+    }}
+}}
+</style>
+<div class="ticker-wrap" title="Hover to pause tape">
+<div class="ticker-track">{marquee_content}</div>
+</div>
+""").strip()
     st.markdown(ticker_html, unsafe_allow_html=True)
+
 
 
 render_ticker_marquee = render_ticker_tape

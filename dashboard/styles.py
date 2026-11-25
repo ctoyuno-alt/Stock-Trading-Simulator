@@ -316,14 +316,14 @@ def metric_card(
     if subtext:
         subtext_html = f'<div style="font-size:10.5px; color:{COLOR_TEXT_MUTED}; margin-top:3px;">{subtext}</div>'
 
-    return f"""
-    <div style="background:{COLOR_SLATE_SURFACE}; border:1px solid {COLOR_BORDER}; border-radius:8px; padding:10px 14px; box-shadow:0 4px 16px rgba(0,0,0,0.25);">
-        <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:{COLOR_TEXT_DIM};">{label}</div>
-        <div style="font-family:\'JetBrains Mono\', monospace; font-size:20px; font-weight:700; color:{COLOR_TEXT_WHITE}; letter-spacing:-0.02em; margin-top:2px;">{value}</div>
-        {delta_html}
-        {subtext_html}
-    </div>
-    """
+    return (
+        f'<div style="background:{COLOR_SLATE_SURFACE}; border:1px solid {COLOR_BORDER}; border-radius:8px; padding:10px 14px; box-shadow:0 4px 16px rgba(0,0,0,0.25);">'
+        f'<div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:{COLOR_TEXT_DIM};">{label}</div>'
+        f'<div style="font-family:\'JetBrains Mono\', monospace; font-size:20px; font-weight:700; color:{COLOR_TEXT_WHITE}; letter-spacing:-0.02em; margin-top:2px;">{value}</div>'
+        f'{delta_html}'
+        f'{subtext_html}'
+        f'</div>'
+    )
 
 
 def badge(text: str, variant: str = "paper") -> str:
