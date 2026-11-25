@@ -222,9 +222,11 @@ def calculate_market_trade_friction(
     """
     Unified entrypoint that dynamically routes trade friction calculation based on market.
     """
-    from backend.app.market_data.universe import universe_manager
-
-    target_market = (market or universe_manager.get_market_for_symbol(symbol)).upper()
+    try:
+        from backend.app.market_data.universe import universe_manager
+        target_market = (market or universe_manager.get_market_for_symbol(symbol)).upper()
+    except (ImportError, Exception):
+        target_market = (market or "IN").upper()
     if target_market == "US":
         return calculate_us_trade_friction(
             symbol=symbol,

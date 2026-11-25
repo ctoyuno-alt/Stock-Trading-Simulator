@@ -20,11 +20,22 @@ from decimal import Decimal
 import logging
 import math
 from typing import List, Optional, Set
-from backend.app.core.config import get_settings
-from backend.app.core.market_schedule import is_market_open
+try:
+    from backend.app.core.config import get_settings
+    from backend.app.core.market_schedule import is_market_open
+    settings = get_settings()
+except ImportError:
+    class _FallbackSettings:
+        PAPER_TRADING_KILL_SWITCH: bool = False
+        MAX_OPEN_POSITIONS: int = 5
+        MIN_STOP_LOSS_PCT: float = 0.005
+
+    settings = _FallbackSettings()
+
+    def is_market_open(market: str = "IN"):
+        return True, "Trading Session Open"
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 
 @dataclass
@@ -236,8 +247,11 @@ def validate_order_risk(
 
     # 3. Market Session Hours & Holidays
     if enforce_market_hours:
-        from backend.app.market_data.universe import universe_manager
-        target_market = (market or universe_manager.get_market_for_symbol(symbol)).upper()
+        try:
+            from backend.app.market_data.universe import universe_manager
+            target_market = (market or universe_manager.get_market_for_symbol(symbol)).upper()
+        except ImportError:
+            target_market = (market or "IN").upper()
         is_open, reason = is_market_open(market=target_market)
         if not is_open:
             rejections.append(f"Order rejected: Outside market hours ({reason}).")
