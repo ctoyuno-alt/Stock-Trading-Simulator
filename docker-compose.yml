@@ -89,6 +89,25 @@ services:
     networks:
       - trading_network
 
+  # ==============================================================================
+  # React Quantitative Workstation Service (Vite + Tailwind CSS + TradingView)
+  # ==============================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: paper_trading_frontend
+    restart: unless-stopped
+    environment:
+      - VITE_PROXY_TARGET=http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - trading_network
+
 volumes:
   postgres_data:
     name: paper_trading_postgres_data

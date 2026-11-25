@@ -1,0 +1,9 @@
+# Node dependencies
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Editor and log files
+.DS_Store
+*.log

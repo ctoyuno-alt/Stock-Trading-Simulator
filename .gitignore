@@ -39,6 +39,13 @@ logs/
 # Docker artifacts
 .docker/
 
+# Node.js and Frontend
+node_modules/
+frontend/dist/
+frontend/node_modules/
+.npm
+
+
 # IDE & OS files
 .vscode/
 .idea/
