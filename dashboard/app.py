@@ -1,431 +1,57 @@
 """
-Gemini-Powered AI Paper Trading Simulator (NSE & US Markets) - Streamlit Dashboard.
-
-Features:
-1. Dual-Market Trading Support: Indian Equities (NSE/BSE in INR) & US Mega-Caps (NYSE/NASDAQ in USD).
-2. Portfolio balance, purchasing power, and equity curve in native currency (₹ or $).
-3. Active watchlists of 10 liquid NSE equities and 10 liquid US mega-caps.
-4. Interactive Plotly charts (Candlestick, EMA 20/50, VWAP, Volume, RSI, MACD).
-5. Grounded Gemini AI analysis, technical signal explanations, and non-hallucinatory confidence ratings.
-6. Open virtual positions with real-time unrealized P&L and one-click manual closure.
-7. Chronological trade order ledger with market-specific regulatory frictions (STT/GST vs SEC/FINRA).
-8. Realized P&L, Unrealized P&L, Win Rate, Profit Factor, Max Drawdown, Sharpe Ratio.
-9. 1% Equity Risk Position Sizing calculator and virtual execution portal.
-10. Dual-Market session awareness (IST for NSE, ET for US).
+Quantum Trader — Institutional AI Paper Trading Platform.
+Main Streamlit Orchestrator delegating to modular auth, components, and tabs.
 """
 
-import sys
-from pathlib import Path
 from datetime import datetime
-import secrets
+from pathlib import Path
+import sys
 import streamlit as st
 
-# Ensure application root (/app or workspace root) is in Python sys.path
 _APP_ROOT = str(Path(__file__).resolve().parent.parent)
 if _APP_ROOT not in sys.path:
     sys.path.insert(0, _APP_ROOT)
 
 from dashboard.api_client import api_client
-from dashboard.components.charts import (
-    create_candlestick_with_indicators,
-    create_equity_curve_chart,
-    create_rsi_chart,
+from dashboard.styles import inject_custom_css
+from dashboard.auth import render_auth_screen, handle_logout
+from dashboard.components.ticker import render_ticker_tape
+from dashboard.components.header import render_top_header
+from dashboard.tabs import (
+    tab_market,
+    tab_ai,
+    tab_autotrader,
+    tab_positions,
+    tab_ledger,
+    tab_backtest,
+    tab_health,
+    tab_admin,
 )
-from dashboard.components.tradingview import render_tradingview_chart
 
-# Page configuration
+# 1. Page Configuration & Institutional Theming
 st.set_page_config(
-    page_title="AI Paper Trading Simulator (NSE & US)",
-    page_icon="📈",
+    page_title="Quantum Trader — Institutional AI Paper Trading",
+    page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+inject_custom_css()
 
-# Custom Institutional Minimal-Modern CSS Styling
-st.markdown("""
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-    /* Global Reset & Base Fonts */
-    html, body, [class*="css"] {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-        background-color: #080B11 !important;
-        color: #E2E8F0;
-    }
+# 2. Authentication Gate (halts via st.stop() if unauthenticated)
+current_user = render_auth_screen(api_client)
 
-    /* Streamlit App Container Clean-up */
-    .block-container {
-        padding-top: 1.2rem !important;
-        padding-bottom: 2rem !important;
-        max-width: 98% !important;
-    }
-    header[data-testid="stHeader"] {
-        background-color: transparent !important;
-    }
-    #MainMenu, footer {
-        visibility: hidden !important;
-    }
-
-    /* Top App Bar Header */
-    .top-app-bar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background: #0E131F;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 10px;
-        padding: 12px 20px;
-        margin-bottom: 16px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-    }
-    .brand-title {
-        font-size: 18px;
-        font-weight: 700;
-        letter-spacing: 0.03em;
-        color: #F8FAFC;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-    .brand-sub {
-        font-size: 12px;
-        color: #8F9CAE;
-        margin-top: 3px;
-    }
-    .status-capsules {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-    .status-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        border-radius: 9999px;
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        font-family: 'JetBrains Mono', monospace;
-    }
-    .pill-open {
-        background: rgba(0, 230, 118, 0.12);
-        color: #00E676;
-        border: 1px solid rgba(0, 230, 118, 0.25);
-    }
-    .pill-closed {
-        background: rgba(255, 59, 48, 0.12);
-        color: #FF3B30;
-        border: 1px solid rgba(255, 59, 48, 0.25);
-    }
-    .pill-daemon {
-        background: rgba(99, 102, 241, 0.12);
-        color: #818CF8;
-        border: 1px solid rgba(99, 102, 241, 0.25);
-    }
-    .pill-paper {
-        background: rgba(0, 242, 254, 0.12);
-        color: #00F2FE;
-        border: 1px solid rgba(0, 242, 254, 0.25);
-    }
-
-    /* Modern Tabs Navigation (Segmented Pill Style) */
-    div[data-baseweb="tab-list"] {
-        gap: 6px !important;
-        background-color: transparent !important;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
-        padding-bottom: 8px !important;
-        margin-bottom: 16px !important;
-    }
-    button[data-baseweb="tab"] {
-        background: #0E131F !important;
-        border: 1px solid rgba(255, 255, 255, 0.06) !important;
-        border-radius: 8px !important;
-        padding: 7px 14px !important;
-        color: #8F9CAE !important;
-        font-weight: 500 !important;
-        font-size: 12.5px !important;
-        letter-spacing: 0.02em !important;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    }
-    button[data-baseweb="tab"]:hover {
-        background: #172033 !important;
-        color: #F8FAFC !important;
-        border-color: rgba(255, 255, 255, 0.15) !important;
-    }
-    button[data-baseweb="tab"][aria-selected="true"] {
-        background: #172033 !important;
-        border: 1px solid rgba(99, 102, 241, 0.5) !important;
-        color: #FFFFFF !important;
-        box-shadow: 0 0 12px rgba(99, 102, 241, 0.2) !important;
-        font-weight: 600 !important;
-    }
-    div[data-baseweb="tab-highlight"] {
-        display: none !important;
-    }
-
-    /* Metric Cards - Frosted Glass Container Override */
-    div[data-testid="stMetric"] {
-        background: #0E131F !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        border-radius: 10px !important;
-        padding: 12px 16px !important;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
-        transition: transform 0.15s ease, border-color 0.15s ease !important;
-    }
-    div[data-testid="stMetric"]:hover {
-        border-color: rgba(99, 102, 241, 0.4) !important;
-        transform: translateY(-1px);
-    }
-    div[data-testid="stMetricLabel"] p {
-        font-size: 11px !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.06em !important;
-        color: #8F9CAE !important;
-        font-weight: 600 !important;
-        margin-bottom: 2px !important;
-    }
-    div[data-testid="stMetricValue"] {
-        font-family: 'JetBrains Mono', monospace !important;
-        font-size: 20px !important;
-        font-weight: 700 !important;
-        color: #F8FAFC !important;
-        letter-spacing: -0.02em !important;
-    }
-    div[data-testid="stMetricDelta"] {
-        font-family: 'JetBrains Mono', monospace !important;
-        font-size: 11.5px !important;
-        font-weight: 600 !important;
-    }
-
-    /* Modern Buttons */
-    div.stButton > button {
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-        font-size: 13px !important;
-        letter-spacing: 0.02em !important;
-        padding: 8px 16px !important;
-        transition: all 0.2s ease !important;
-    }
-    div.stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%) !important;
-        border: none !important;
-        color: #FFFFFF !important;
-        box-shadow: 0 2px 10px rgba(79, 70, 229, 0.3) !important;
-    }
-    div.stButton > button[kind="primary"]:hover {
-        box-shadow: 0 4px 16px rgba(79, 70, 229, 0.5) !important;
-        transform: translateY(-1px);
-    }
-    div.stButton > button[kind="secondary"] {
-        background: #121826 !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        color: #E2E8F0 !important;
-    }
-    div.stButton > button[kind="secondary"]:hover {
-        background: #172033 !important;
-        border-color: rgba(255, 255, 255, 0.2) !important;
-    }
-
-    /* Sidebar Clean Elevation */
-    section[data-testid="stSidebar"] {
-        background-color: #0A0D15 !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
-    }
-    .sidebar-brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 12px;
-    }
-    .sidebar-brand-title {
-        font-size: 16px;
-        font-weight: 700;
-        letter-spacing: 0.03em;
-        color: #F8FAFC;
-    }
-
-    /* Dataframes & Tables */
-    div[data-testid="stDataFrame"] {
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        border-radius: 8px !important;
-        overflow: hidden !important;
-    }
-
-    /* Form Inputs, Selectboxes, Sliders */
-    div[data-baseweb="select"] > div {
-        background-color: #0E131F !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: 8px !important;
-        color: #F8FAFC !important;
-    }
-    div[data-baseweb="input"] > div {
-        background-color: #0E131F !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: 8px !important;
-        color: #F8FAFC !important;
-    }
-
-    /* Custom Dividers */
-    hr {
-        border-color: rgba(255, 255, 255, 0.06) !important;
-        margin: 18px 0 !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-
-# --- User Authentication Gate ---
-auth_token = st.session_state.get("auth_token")
-user_profile = st.session_state.get("user_profile")
-
-if auth_token:
-    api_client.set_auth_token(auth_token)
-
-if not auth_token or not user_profile:
-    # Render minimal modern Obsidian login / registration interface
-    st.markdown(
-        """
-        <div style="text-align: center; margin-top: 3rem; margin-bottom: 2rem;">
-            <div style="font-size: 38px; margin-bottom: 8px;">⚡</div>
-            <div style="font-size: 26px; font-weight: 700; color: #F8FAFC; letter-spacing: 0.04em;">QUANTUM TRADER</div>
-            <div style="font-size: 13px; color: #8F9CAE; margin-top: 4px;">Institutional AI Paper Trading & Quantitative Analytics Workstation</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    auth_col1, auth_col2, auth_col3 = st.columns([1, 1.8, 1])
-    with auth_col2:
-        tab_login, tab_register, tab_forgot = st.tabs(["🔐 Sign In", "✨ Create Account", "🔑 Forgot Password?"])
-        with tab_login:
-            with st.form("login_form"):
-                st.markdown("#### **Access Your Terminal**")
-                login_user = st.text_input("Username", placeholder="e.g. admin or trader_one")
-                login_pass = st.text_input("Password", type="password", placeholder="Enter your password")
-                submitted = st.form_submit_button("Sign In to Terminal", use_container_width=True, type="primary")
-                if submitted:
-                    if not login_user or not login_pass:
-                        st.error("Please enter both username and password.")
-                    else:
-                        resp = api_client.login(login_user, login_pass)
-                        if resp.get("error"):
-                            st.error(f"Authentication failed: {resp.get('message', 'Invalid credentials')}")
-                        else:
-                            st.session_state["auth_token"] = resp.get("access_token")
-                            st.session_state["user_profile"] = resp.get("user")
-                            st.rerun()
-
-            st.caption("💡 **Default Administrator Access:** `admin` / `admin_secure_password`")
-
-        with tab_register:
-            with st.form("register_form"):
-                st.markdown("#### **Create New Trader Account**")
-                reg_user = st.text_input("Username", placeholder="Choose username (3+ chars)")
-                reg_email = st.text_input("Email", placeholder="trader@quantum.ai")
-                reg_pass = st.text_input("Password", type="password", placeholder="Minimum 8 characters")
-                reg_submitted = st.form_submit_button("Register & Launch Terminal", use_container_width=True, type="primary")
-                if reg_submitted:
-                    if not reg_user or not reg_email or not reg_pass:
-                        st.error("Please fill in all registration fields.")
-                    elif len(reg_pass) < 8:
-                        st.error("Password must be at least 8 characters long.")
-                    else:
-                        resp = api_client.register(reg_user, reg_email, reg_pass)
-                        if resp.get("error"):
-                            st.error(f"Registration failed: {resp.get('message', 'Could not create account')}")
-                        else:
-                            st.session_state["auth_token"] = resp.get("access_token")
-                            st.session_state["user_profile"] = resp.get("user")
-                            st.rerun()
-
-        with tab_forgot:
-            st.markdown("#### **Account Recovery & Password Reset**")
-            st.caption("Recover access to your paper trading terminal using self-service token verification.")
-
-            # Step 1: Request Token
-            with st.form("forgot_password_request_form"):
-                st.markdown("##### **Step 1: Request 15-Min Recovery Token**")
-                reset_id = st.text_input("Username or Registered Email", placeholder="e.g. trader_one or trader@quantum.ai")
-                req_btn = st.form_submit_button("Generate Recovery Token", use_container_width=True)
-                if req_btn:
-                    if not reset_id.strip():
-                        st.error("Please enter your username or registered email address.")
-                    else:
-                        resp = api_client.forgot_password(reset_id.strip())
-                        if resp.get("error"):
-                            st.error(f"Error: {resp.get('message', 'Failed to generate recovery token')}")
-                        else:
-                            token = resp.get("reset_token")
-                            if token:
-                                st.session_state["cached_reset_token"] = token
-                                st.success(f"✅ Recovery token issued! Valid for {resp.get('expires_in_minutes', 15)} minutes.")
-                            else:
-                                st.info(resp.get("message"))
-
-            cached_token = st.session_state.get("cached_reset_token", "")
-            if cached_token:
-                st.markdown(
-                    f"""
-                    <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 12px; margin-top: 10px; margin-bottom: 12px;">
-                        <div style="font-size: 11px; font-weight: 600; color: #10B981; letter-spacing: 0.05em; text-transform: uppercase;">Active 15-Minute Recovery Token</div>
-                        <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; word-break: break-all; color: #F8FAFC; margin-top: 4px;">{cached_token}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-            # Step 2: Apply Token and Set New Password
-            with st.form("reset_password_submit_form"):
-                st.markdown("##### **Step 2: Set New Secure Password**")
-                token_input = st.text_input(
-                    "Recovery Token",
-                    value=cached_token,
-                    placeholder="Paste 15-minute recovery token here",
-                )
-                new_pw = st.text_input("New Password", type="password", placeholder="Minimum 8 characters")
-                confirm_pw = st.text_input("Confirm New Password", type="password", placeholder="Re-type new password")
-                submit_reset = st.form_submit_button("Reset Password & Proceed to Login", use_container_width=True, type="primary")
-                if submit_reset:
-                    if not token_input.strip():
-                        st.error("Please provide the recovery token.")
-                    elif not new_pw or not confirm_pw:
-                        st.error("Please enter and confirm your new password.")
-                    elif len(new_pw) < 8:
-                        st.error("New password must be at least 8 characters long.")
-                    elif new_pw != confirm_pw:
-                        st.error("Passwords do not match. Please verify and retry.")
-                    else:
-                        resp = api_client.reset_password(token_input.strip(), new_pw)
-                        if resp.get("error"):
-                            st.error(f"Reset failed: {resp.get('message', 'Invalid or expired token')}")
-                        else:
-                            st.session_state.pop("cached_reset_token", None)
-                            st.success("🎉 Password successfully reset! Please click '🔐 Sign In' tab to log in.")
-
-
-    st.stop()
-
-
-# --- Authenticated User Context ---
-current_user = st.session_state.get("user_profile", {})
-user_role = current_user.get("role", "trader")
-is_admin = str(user_role).lower() == "admin"
-
-
-
-# --- Fetch Global System Status ---
+# 3. Context & Global Status
+user_role = str((current_user.get("role") if isinstance(current_user, dict) else None) or "trader")
+is_admin = user_role.lower() == "admin"
 system_status = api_client.get_system_status()
+if not isinstance(system_status, dict):
+    system_status = {}
 health_ready = api_client.get_health_ready()
+if not isinstance(health_ready, dict):
+    health_ready = {}
 kill_switch_active = system_status.get("safety_guardrails", {}).get("kill_switch_active", False)
 
-
-# --- Sidebar Controls & Metrics ---
+# 4. Sidebar Controls & Market Navigation
 with st.sidebar:
     st.markdown(
         """
@@ -440,12 +66,12 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    # User Profile Capsule & Sign Out
+    username_display = str((current_user.get("username") if isinstance(current_user, dict) else None) or "User")
     st.markdown(
         f"""
         <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <div style="font-weight: 600; font-size: 13px; color: #F8FAFC;">👤 {current_user.get('username', 'User')}</div>
+                <div style="font-weight: 600; font-size: 13px; color: #F8FAFC;">👤 {username_display}</div>
                 <div style="font-size: 10px; color: #8F9CAE; font-family: 'JetBrains Mono', monospace;">ROLE: {user_role.upper()}</div>
             </div>
             <span class="status-pill {'pill-paper' if is_admin else 'pill-daemon'}">{user_role.upper()}</span>
@@ -453,15 +79,11 @@ with st.sidebar:
         """,
         unsafe_allow_html=True,
     )
-    if st.button("🚪 Sign Out", use_container_width=True):
-        st.session_state.pop("auth_token", None)
-        st.session_state.pop("user_profile", None)
-        api_client.set_auth_token(None)
-        st.rerun()
+    if st.button("🚪 Sign Out", use_container_width=True, key="btn_sidebar_signout"):
+        handle_logout(api_client)
 
     st.divider()
 
-    # 1. Market Selection Toggle
     market_choice = st.radio(
         "Active Market / Exchange",
         ["🇮🇳 India (NSE) - INR (₹)", "🇺🇸 US (NYSE/NASDAQ) - USD ($)"],
@@ -472,7 +94,6 @@ with st.sidebar:
     active_currency = "USD" if is_us_market else "INR"
     curr_sym = "$" if is_us_market else "₹"
 
-    # Session Status Badge
     if is_us_market:
         is_open = system_status.get("us_market_open", False)
         clock_time = system_status.get("et_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S ET"))
@@ -493,8 +114,9 @@ with st.sidebar:
 
     st.divider()
 
-    # Fetch Universe and Portfolio for the active market
     universe = api_client.get_universe(market=active_market)
+    if not isinstance(universe, list):
+        universe = []
     all_universe_symbols = [inst["symbol"] for inst in universe] or (
         ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "JPM", "V"]
         if is_us_market
@@ -502,7 +124,6 @@ with st.sidebar:
     )
     sym_to_name = {inst["symbol"]: inst.get("company_name", "") for inst in universe}
 
-    # Universe Scope Filter (for Indian equities: Blue-Chips vs All 2,600+ Listed Equities)
     if not is_us_market and len(all_universe_symbols) > 15:
         top_bluechips = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "SBIN", "ITC", "LT", "TATAMOTORS"]
         scope = st.radio(
@@ -519,8 +140,9 @@ with st.sidebar:
         universe_symbols = all_universe_symbols
 
     portfolio = api_client.get_portfolio(currency=active_currency)
+    if not isinstance(portfolio, dict):
+        portfolio = {}
 
-    # Instrument & Timeframe Selectors with Autocomplete Formatting
     selected_symbol = st.selectbox(
         f"Select Instrument ({len(universe_symbols):,} Available)",
         options=universe_symbols,
@@ -529,7 +151,6 @@ with st.sidebar:
     )
     timeframe = st.selectbox("Timeframe", options=["1d", "1h", "15m"], index=0)
 
-    # Live Monitoring & Auto-Refresh Controls
     st.markdown("#### **Live Monitoring Mode**")
     auto_refresh = st.toggle("🔴 Auto-Refresh Live Stream", value=False)
     refresh_rate = 10
@@ -546,14 +167,13 @@ with st.sidebar:
 
     st.divider()
 
-    # Portfolio Quick Snapshot
-    st.markdown(f"#### **Portfolio Snapshot ({active_currency})**")
     default_cap = 25000.0 if is_us_market else 100000.0
     equity_val = portfolio.get("equity_inr", default_cap)
     cash_val = portfolio.get("cash_balance_inr", default_cap)
     open_count = portfolio.get("open_positions_count", 0)
     total_pnl = portfolio.get("total_pnl_inr", 0.0)
 
+    st.markdown(f"#### **Portfolio Snapshot ({active_currency})**")
     col_s1, col_s2 = st.columns(2)
     col_s1.metric("Equity", f"{curr_sym}{equity_val:,.2f}")
     col_s2.metric("Cash", f"{curr_sym}{cash_val:,.2f}")
@@ -562,7 +182,6 @@ with st.sidebar:
 
     st.divider()
 
-    # Emergency Kill Switch
     st.markdown("#### **Safety Controls**")
     if not is_admin:
         st.caption("🔒 *Kill switch and account reset are restricted to Administrator accounts.*")
@@ -583,1098 +202,62 @@ with st.sidebar:
             st.caption(f"Clears existing orders/positions and resets starting capital to {curr_sym}{default_cap:,.2f} for fresh trading with real market prices.")
             if st.button(f"Confirm Reset to {curr_sym}{default_cap:,.0f}", use_container_width=True, type="secondary"):
                 res = api_client.reset_paper_account(currency=active_currency, initial_capital=default_cap)
-                if res.get("error"):
+                if res and res.get("error"):
                     st.error(f"Reset failed: {res.get('message')}")
                 else:
                     st.success(f"Account successfully reset to {curr_sym}{default_cap:,.2f}!")
                     st.rerun()
 
+# 5. Shared State Assembly
+state = {
+    "current_user": current_user,
+    "user_role": user_role,
+    "is_admin": is_admin,
+    "is_us_market": is_us_market,
+    "active_market": active_market,
+    "active_currency": active_currency,
+    "curr_sym": curr_sym,
+    "is_open": is_open,
+    "system_status": system_status,
+    "health_ready": health_ready,
+    "kill_switch_active": kill_switch_active,
+    "universe": universe,
+    "universe_symbols": universe_symbols,
+    "sym_to_name": sym_to_name,
+    "portfolio": portfolio,
+    "default_cap": default_cap,
+    "equity_val": equity_val,
+    "cash_val": cash_val,
+    "open_count": open_count,
+    "total_pnl": total_pnl,
+    "auto_refresh": auto_refresh,
+    "refresh_rate": refresh_rate,
+    "auto_trade_on_refresh": auto_trade_on_refresh,
+}
 
-# --- Main Dashboard Header App Bar ---
-market_header_text = "US Equities (NYSE/NASDAQ)" if is_us_market else "Indian Equities (NSE/BSE)"
-daemon_info = api_client.get_daemon_status()
-daemon_active = daemon_info.get("is_running", False)
-daemon_badge_class = "pill-open" if daemon_active else "pill-closed"
-daemon_badge_text = "24/7 DAEMON: ACTIVE" if daemon_active else "24/7 DAEMON: STANDBY"
-session_badge_class = "pill-open" if is_open else "pill-closed"
-session_badge_text = f"{active_market} SESSION: OPEN" if is_open else f"{active_market} SESSION: CLOSED"
-user_badge_text = f"👤 {current_user.get('username', 'trader').upper()} ({user_role.upper()})"
+# 6. Top Streaming Ticker Marquee & Institutional Header
+render_ticker_tape(api_client, market=active_market)
+render_top_header(state, api_client=api_client)
 
-st.markdown(
-    f"""
-    <div class="top-app-bar">
-        <div>
-            <div class="brand-title">
-                <span>⚡ QUANTUM TRADER</span>
-                <span class="status-pill pill-paper">{market_header_text}</span>
-            </div>
-            <div class="brand-sub">Institutional Quantitative Analytics • Multi-Factor Confluence Strategy • Broker Independent ({active_currency})</div>
-        </div>
-        <div class="status-capsules">
-            <span class="status-pill {'pill-paper' if is_admin else 'pill-daemon'}">{user_badge_text}</span>
-            <span class="status-pill {session_badge_class}">● {session_badge_text}</span>
-            <span class="status-pill {daemon_badge_class}">● {daemon_badge_text}</span>
-            <span class="status-pill pill-paper">VIRTUAL SIMULATION</span>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# --- Dashboard Tabs ---
-tab_titles = [
-    "📊 Market & Technicals",
-    "🧠 AI Confluence Analysis",
-    "🤖 Autonomous AI Auto-Trader",
-    "💼 Positions & Execution",
-    "📜 Trade Ledger & Performance",
-    "🧪 Historical Backtest",
-    "🛡️ System Health & Freshness",
+# 7. Tab Declarations & Modular Rendering
+tab_specs = [
+    ("📊 Market & Technicals", tab_market.render_tab),
+    ("🧠 AI Confluence Analysis", tab_ai.render_tab),
+    ("🤖 Autonomous AI Auto-Trader", tab_autotrader.render_tab),
+    ("💼 Positions & Execution", tab_positions.render_tab),
+    ("📜 Trade Ledger & Performance", tab_ledger.render_tab),
+    ("🧪 Historical Backtest", tab_backtest.render_tab),
+    ("🛡️ System Health & Freshness", tab_health.render_tab),
 ]
 if is_admin:
-    tab_titles.append("👤 Admin User & Account Management")
+    tab_specs.append(("👤 Admin User & Account Management", tab_admin.render_tab))
 
-all_tabs = st.tabs(tab_titles)
-tab_market = all_tabs[0]
-tab_ai = all_tabs[1]
-tab_autotrader = all_tabs[2]
-tab_positions = all_tabs[3]
-tab_ledger = all_tabs[4]
-tab_backtest = all_tabs[5]
-tab_health = all_tabs[6]
-tab_admin = all_tabs[7] if is_admin else None
+tab_containers = st.tabs([title for title, _ in tab_specs])
+for container, (_, render_fn) in zip(tab_containers, tab_specs):
+    with container:
+        render_fn(api_client, state, active_market, selected_symbol, timeframe)
 
-
-
-# ==============================================================================
-# TAB 1: Market & Technical Indicators
-# ==============================================================================
-with tab_market:
-    m_top_col1, m_top_col2 = st.columns([4, 1])
-    with m_top_col1:
-        st.markdown(f"### **{selected_symbol} — Live Market & Technical Indicators**")
-        st.caption(f"Data source: TradingView & Yahoo Finance • {active_market} Market ({active_currency}) • Timeframe: {timeframe} • Polling interval: {refresh_rate if auto_refresh else 'Manual'}s")
-    with m_top_col2:
-        if st.button("🔄 Refresh Quote Now", use_container_width=True):
-            st.rerun()
-
-    chart_engine = st.radio(
-        "Chart Engine View",
-        [
-            "📈 TradingView Interactive Pro Chart (Live Canvas - All Stocks)",
-            "🌐 TradingView Advanced Widget (US Stocks & Web View)",
-            "📊 Quantitative Multi-Panel (Plotly Indicators)",
-        ],
-        horizontal=True,
-        index=0,
-    )
-
-    # Smart lookback period based on selected timeframe
-    default_period = "5d" if timeframe == "15m" else ("1mo" if timeframe == "1h" else "6mo")
-
-    with st.spinner(f"Loading market data and quantitative indicators for {selected_symbol}..."):
-        candles_data = api_client.get_candles(selected_symbol, timeframe=timeframe, period=default_period)
-        indicators_data = api_client.get_indicators(selected_symbol, timeframe=timeframe)
-
-    if candles_data.get("error"):
-        st.warning(f"Note on historical candles: {candles_data.get('message')}")
-
-    # Latest Snapshot KPIs
-    latest_snap = indicators_data.get("latest_snapshot", {})
-    if latest_snap:
-        kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5, kpi_c6 = st.columns(6)
-        kpi_c1.metric("Close", f"{curr_sym}{latest_snap.get('close_price', 0):,.2f}")
-        kpi_c2.metric("EMA 20", f"{curr_sym}{latest_snap.get('ema_fast_20') or 0:,.2f}")
-        kpi_c3.metric("EMA 50", f"{curr_sym}{latest_snap.get('ema_slow_50') or 0:,.2f}", delta=f"{latest_snap.get('ema_spread_pct') or 0:+.2f}%")
-        kpi_c4.metric("RSI 14", f"{latest_snap.get('rsi_14') or 0:.1f}", delta=latest_snap.get("rsi_regime"))
-        kpi_c5.metric("MACD Hist", f"{latest_snap.get('macd_histogram') or 0:+.3f}", delta=latest_snap.get("macd_state"))
-        kpi_c6.metric("VWAP", f"{curr_sym}{latest_snap.get('vwap') or 0:,.2f}", delta=f"{latest_snap.get('price_to_vwap_pct') or 0:+.2f}%")
-
-    if "Canvas" in chart_engine or "All Stocks" in chart_engine:
-        st.caption(f"⚡ Interactive TradingView Canvas Chart for {selected_symbol} ({timeframe.upper()}) with volume histogram, EMA 20 (Cyan), EMA 50 (Orange) and live crosshair legend.")
-        render_tradingview_chart(
-            selected_symbol,
-            timeframe=timeframe,
-            height=640,
-            candles_data=candles_data,
-            indicators_data=indicators_data,
-            use_embed_widget=False,
-        )
-    elif "Advanced Widget" in chart_engine:
-        st.caption("⚡ TradingView Advanced Widget with drawing tools, Fibonacci retracements & institutional dark theme.")
-        render_tradingview_chart(
-            selected_symbol,
-            timeframe=timeframe,
-            height=680,
-            use_embed_widget=True,
-        )
-    else:
-        # Interactive Plotly Candlestick Chart
-        fig = create_candlestick_with_indicators(candles_data, indicators_data, symbol=selected_symbol)
-        if fig:
-            st.plotly_chart(fig, use_container_width=True)
-
-        # RSI Subplot Chart
-        if indicators_data.get("rsi"):
-            rsi_fig = create_rsi_chart(indicators_data.get("timestamps", []), indicators_data.get("rsi", []))
-            if rsi_fig:
-                st.plotly_chart(rsi_fig, use_container_width=True)
-
-
-# ==============================================================================
-# TAB 2: AI & Deterministic Strategy Signals
-# ==============================================================================
-with tab_ai:
-    st.markdown(f"### **Strategy Signals & Gemini AI Confluence Analysis: {selected_symbol}**")
-
-    col_ai_left, col_ai_right = st.columns([1, 1])
-
-    # Left: Deterministic Python Strategy Signal
-    with col_ai_left:
-        st.markdown("#### **Deterministic Strategy Engine (Python)**")
-        with st.spinner("Evaluating multi-factor swing trading rules..."):
-            signal_data = api_client.get_signal(selected_symbol, timeframe=timeframe)
-
-        if signal_data.get("error"):
-            st.warning(f"Could not load strategy signal: {signal_data.get('message')}")
-        else:
-            action = signal_data.get("action", "HOLD")
-            action_color = "#00E676" if action == "BUY" else ("#FF3B30" if action == "SELL" else "#94A3B8")
-
-            st.markdown(
-                f'<div style="background-color: #0E131F; padding: 16px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid {action_color}; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);">'
-                f'<h3 style="margin:0; color: {action_color}; font-family: \'JetBrains Mono\', monospace;">Action: {action} ({signal_data.get("strength")})</h3>'
-                f'<p style="margin: 6px 0 0 0; color: #F8FAFC;"><strong>Technical Confluence Score:</strong> <span style="font-family: \'JetBrains Mono\', monospace; color: #00F2FE;">{signal_data.get("technical_score")}/100</span></p>'
-                f'<p style="margin: 6px 0 0 0; font-size: 13px; color: #8F9CAE;">{signal_data.get("primary_trigger")}</p>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-            st.markdown("##### **Quantitative Target & Risk Limits:**")
-            t_col1, t_col2, t_col3 = st.columns(3)
-            t_col1.metric("Entry Benchmark", f"{curr_sym}{signal_data.get('entry_price', 0):,.2f}")
-            t_col2.metric("Stop Loss", f"{curr_sym}{signal_data.get('suggested_stop_loss', 0):,.2f}", delta=f"-{signal_data.get('stop_loss_pct', 0):.2f}%")
-            t_col3.metric("Take Profit", f"{curr_sym}{signal_data.get('suggested_take_profit', 0):,.2f}", delta=f"+{signal_data.get('target_profit_pct', 0):.2f}%")
-
-            st.markdown("##### **Confirming Factors:**")
-            for c in signal_data.get("confirming_factors", []):
-                st.markdown(f"- ✅ <span style='color:#A5D6A7;'>{c}</span>", unsafe_allow_html=True)
-
-            if signal_data.get("conflicting_factors"):
-                st.markdown("##### **Conflicting Factors / Warning Signs:**")
-                for cf in signal_data.get("conflicting_factors", []):
-                    st.markdown(f"- ⚠️ <span style='color:#EF9A9A;'>{cf}</span>", unsafe_allow_html=True)
-
-    # Right: Google Gemini AI Analysis
-    with col_ai_right:
-        st.markdown("#### **Google Gemini AI Quantitative Interpretation**")
-        if st.button("Generate AI Market Interpretation", type="secondary", use_container_width=True):
-            st.session_state["trigger_ai"] = True
-
-        if st.session_state.get("trigger_ai") or True:
-            with st.spinner("Synthesizing grounded technical interpretation via Gemini..."):
-                ai_resp = api_client.get_ai_analysis(selected_symbol, timeframe=timeframe)
-
-            if ai_resp.get("error"):
-                st.warning(f"AI service response: {ai_resp.get('message')}")
-            else:
-                ai_data = ai_resp.get("ai_analysis", {})
-                st.info(f"**AI Stance:** {ai_data.get('recommended_action_opinion', 'FAVORS_PATIENCE')} (Confidence Rating: {ai_data.get('ai_confidence_score', 0):.1f}/100)")
-                st.caption(f"**Confidence Rationale:** {ai_data.get('ai_confidence_rationale', '')}")
-
-                with st.expander("📈 Trend & Moving Averages Interpretation", expanded=True):
-                    st.write(ai_data.get("trend_analysis", "N/A"))
-
-                with st.expander("⚡ Momentum & RSI 14 Analysis", expanded=True):
-                    st.write(ai_data.get("momentum_analysis", "N/A"))
-
-                with st.expander("🌊 MACD & Institutional VWAP Assessment", expanded=False):
-                    st.write(f"**MACD:** {ai_data.get('macd_interpretation', 'N/A')}")
-                    st.write(f"**VWAP:** {ai_data.get('vwap_relationship', 'N/A')}")
-
-                with st.expander("⚠️ Key Identified Market Risks", expanded=False):
-                    for rk in ai_data.get("key_risks", []):
-                        st.markdown(f"- {rk}")
-
-                st.warning(f"**ETHICAL NOTICE:** {ai_data.get('disclaimer', '')}")
-
-
-# ==============================================================================
-# TAB 3: Autonomous AI Auto-Trader
-# ==============================================================================
-with tab_autotrader:
-    st.markdown(f"### **🤖 Autonomous AI Auto-Trading Engine ({active_market} Market — {active_currency})**")
-    active_account_label = f"{current_user.get('username')}'s Account" if current_user.get("username") else "Primary Account"
-    st.caption(f"Fully automated, hands-free order execution powered by quantitative confluence & Gemini AI. Currently trading in: **{active_account_label}** ({active_currency}). 24/7 background daemon actively manages all registered accounts.")
-
-    # Fetch Auto-Trader Status from Backend
-    bot_status = api_client.get_auto_trader_status()
-    bot_cfg = bot_status.get("config", {})
-    last_cycle = bot_status.get("last_cycle_at") or "Never"
-    is_bot_enabled = bot_cfg.get("enabled", False)
-
-    # Top KPI Banner
-    stat_c1, stat_c2, stat_c3, stat_c4 = st.columns(4)
-    stat_c1.metric("Bot Status", "🟢 ACTIVE" if is_bot_enabled else "⏸️ STANDBY")
-    stat_c2.metric("Min Confluence", f"{bot_cfg.get('min_confluence_score', 70)}/100")
-    stat_c3.metric("AI Gate", "🔒 REQUIRED" if bot_cfg.get("require_ai_approval", True) else "🔓 BYPASSED")
-    stat_c4.metric("Last Evaluation", last_cycle.split(".")[0] if "." in last_cycle else last_cycle)
-
-    st.divider()
-
-    # Bot Master Switch & Settings
-    col_ctrl_left, col_ctrl_right = st.columns([1, 1])
-
-    with col_ctrl_left:
-        st.markdown("#### **Execution Controls & Master Switch**")
-        new_enabled = st.toggle("Enable Autonomous Auto-Trading", value=is_bot_enabled, key="bot_master_toggle")
-        if new_enabled != is_bot_enabled:
-            api_client.update_auto_trader_config({"enabled": new_enabled})
-            st.rerun()
-
-        if is_bot_enabled:
-            st.success("🤖 AI Auto-Trader is **ACTIVE**. Orders will trigger automatically when high-confluence signals are detected.")
-        else:
-            st.info("⏸️ AI Auto-Trader is on **STANDBY**. You can run a single cycle manually using the button below.")
-
-        col_act1, col_act2 = st.columns(2)
-        with col_act1:
-            if st.button("⚡ Run AI Auto-Trade Cycle Now", type="primary", use_container_width=True):
-                with st.spinner(f"Scanning {active_market} universe for {active_account_label}, verifying AI gates, and managing positions..."):
-                    tick_res = api_client.run_auto_trader_tick(market=active_market, timeframe=timeframe)
-                if tick_res.get("error"):
-                    st.error(f"Auto-Trader cycle failed: {tick_res.get('message')}")
-                else:
-                    cycle = tick_res.get("cycle_result", {})
-                    n_exec = cycle.get("orders_executed_count", 0)
-                    n_closed = cycle.get("positions_closed_count", 0)
-                    target_acc = cycle.get("account_name", active_account_label)
-                    st.success(f"Cycle completed for {target_acc}! Executed: {n_exec} orders | Closed: {n_closed} positions.")
-                    st.rerun()
-        with col_act2:
-            if st.button("🗑️ Clear Decision Log", use_container_width=True):
-                api_client.clear_auto_trader_history()
-                st.rerun()
-
-    with col_ctrl_right:
-        st.markdown("#### **Risk & Strategy Parameters**")
-        st.markdown(
-            """
-            <div style="background: rgba(0, 230, 118, 0.08); border: 1px solid rgba(0, 230, 118, 0.25); border-radius: 6px; padding: 6px 12px; margin-bottom: 12px; font-size: 11px; color: #00E676; font-family: 'JetBrains Mono', monospace;">
-                🛡️ MINIMUM RISK PROFILE: 85 Confluence • 0.5% Risk Budget • Max 2 Positions • Reversal Churn Blocked
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        with st.form("auto_trader_config_form"):
-            new_score = st.slider("Minimum Confluence Score Threshold", min_value=50, max_value=95, value=bot_cfg.get("min_confluence_score", 85), step=5)
-            new_ai_gate = st.checkbox("Require Gemini AI Confirmation Gate", value=bot_cfg.get("require_ai_approval", True))
-            new_rev_exit = st.checkbox("Auto-Exit Position on Strategy Reversal to SELL", value=bot_cfg.get("auto_exit_on_reversal", False))
-            new_enforce_hours = st.checkbox("Enforce Strict Exchange Session Hours", value=bot_cfg.get("enforce_market_hours", False))
-            new_max_pos = st.number_input("Maximum Concurrent Open Positions", min_value=1, max_value=5, value=bot_cfg.get("max_open_positions", 2))
-
-            save_cfg = st.form_submit_button("💾 Save Auto-Trader Settings", use_container_width=True)
-            if save_cfg:
-                cfg_payload = {
-                    "min_confluence_score": new_score,
-                    "require_ai_approval": new_ai_gate,
-                    "auto_exit_on_reversal": new_rev_exit,
-                    "enforce_market_hours": new_enforce_hours,
-                    "max_open_positions": new_max_pos,
-                }
-                api_client.update_auto_trader_config(cfg_payload)
-                st.success("Auto-Trader configuration saved successfully!")
-                st.rerun()
-
-    st.divider()
-
-    # Live Activity & Decision Audit Feed
-    st.markdown("#### **Real-Time AI Decision Feed & Audit Trail**")
-    decisions = bot_status.get("recent_decisions", [])
-    if not decisions:
-        st.info("No decisions logged yet. Click 'Run AI Auto-Trade Cycle Now' above to begin autonomous scanning.")
-    else:
-        st.dataframe(
-            decisions,
-            use_container_width=True,
-            column_config={
-                "timestamp": "Timestamp",
-                "symbol": "Symbol",
-                "market": "Market",
-                "action": "Action",
-                "score": st.column_config.NumberColumn("Score", format="%d/100"),
-                "executed": "Executed",
-                "order_id": "Order ID",
-                "pnl": st.column_config.NumberColumn(f"P&L ({active_currency})", format=f"{curr_sym}%.2f"),
-                "reason": "AI / Strategy Rationale",
-            },
-        )
-
-    st.divider()
-
-    # 24/7 Autonomous Background Daemon & Safety Controls
-    st.markdown("#### **🛡️ 24/7 Background Trading Daemon & Real-World Safety**")
-    d_col1, d_col2 = st.columns([1, 1])
-
-    with d_col1:
-        st.markdown("##### **24/7 Server Daemon Status**")
-        daemon_data = api_client.get_daemon_status()
-        d_running = daemon_data.get("is_running", False)
-        d_interval = daemon_data.get("interval_seconds", 30)
-        d_cycles = daemon_data.get("cycles_completed", 0)
-        d_last = daemon_data.get("last_cycle_at") or "Never"
-        m_status = daemon_data.get("markets_status", {}).get(active_market, {})
-        m_open = m_status.get("is_open", False)
-
-        m_badge = "🟢 Session OPEN" if m_open else f"🔴 Session CLOSED ({m_status.get('reason', 'Off hours')})"
-        d_badge = "🟢 ACTIVE (Running 24/7)" if d_running else "⏸️ STOPPED"
-
-        st.caption(f"Status: **{d_badge}** • {active_market} Market: **{m_badge}**")
-        st.caption(f"Polling Interval: **{d_interval}s** • Completed Cycles: **{d_cycles}** • Last Run: **{d_last.split('.')[0] if '.' in d_last else d_last}**")
-
-        c_d1, c_d2 = st.columns(2)
-        with c_d1:
-            if not d_running:
-                if st.button("🚀 Start 24/7 Background Daemon", type="primary", use_container_width=True):
-                    api_client.start_daemon(interval_seconds=30)
-                    st.rerun()
-            else:
-                if st.button("⏹️ Stop Background Daemon", type="secondary", use_container_width=True):
-                    api_client.stop_daemon()
-                    st.rerun()
-        with c_d2:
-            st.caption("When active, trades execute autonomously on the server even if your browser is closed.")
-
-    with d_col2:
-        st.markdown("##### **📱 Free Real-Time Telegram Push Alerts**")
-        with st.expander("Configure Telegram Trade Alerts"):
-            st.caption("Get instant notifications for orders, take-profits, and stop-loss triggers on your phone.")
-            tg_token = st.text_input("Telegram Bot Token (from @BotFather)", type="password", key="tg_bot_token_input")
-            tg_chat = st.text_input("Telegram Chat ID", key="tg_chat_id_input")
-            if st.button("🔔 Send Test Notification", use_container_width=True):
-                test_res = api_client.test_telegram_notification(bot_token=tg_token or None, chat_id=tg_chat or None)
-                if test_res.get("success"):
-                    st.success(test_res.get("message", "Test alert delivered!"))
-                else:
-                    st.error(test_res.get("message", "Failed to send alert. Check token/chat ID."))
-
-    # Virtual Exchange GTT Orders Section
-    gtt_orders = api_client.get_gtt_orders()
-    if gtt_orders:
-        st.markdown("##### **🏛️ Active Virtual Exchange GTT Bracket Orders**")
-        st.caption("Exchange-side simulated bracket orders protecting open positions with zero execution lag.")
-        st.dataframe(gtt_orders, use_container_width=True)
-
-
-# ==============================================================================
-# TAB 4: Positions & Execution Portal
-# ==============================================================================
-with tab_positions:
-    st.markdown(f"### **Virtual Portfolio Exposure & Position Management ({active_currency})**")
-
-    # Open Positions List for Active Currency
-    open_positions = api_client.get_positions(status_filter="OPEN", currency=active_currency)
-
-    if not open_positions:
-        st.info(f"No active virtual {active_currency} swing positions currently open. Use the order execution portal below to enter trades.")
-    else:
-        pos_hdr_c1, pos_hdr_c2 = st.columns([4, 1])
-        pos_hdr_c1.markdown(f"#### **Active Open Positions ({len(open_positions)} / 5 Max)**")
-        with pos_hdr_c2:
-            if st.button("🔄 Refresh Quotes", use_container_width=True):
-                st.rerun()
-
-        for pos in open_positions:
-            p_col1, p_col2, p_col3, p_col4, p_col5, p_col6 = st.columns([2, 2, 2, 2, 2, 2])
-            pnl = pos.get("unrealized_pnl_inr", 0.0)
-            entry_p = pos.get("entry_price", 1.0)
-            curr_p = pos.get("current_price", 1.0)
-            ret_pct = ((curr_p - entry_p) / entry_p) * 100.0 if entry_p else 0.0
-
-            p_col1.markdown(f"**{pos['symbol']}** ({pos['quantity']} shs • {pos.get('exchange', 'NSE')})")
-            p_col2.metric("Entry", f"{curr_sym}{entry_p:,.2f}")
-            p_col3.metric("Current", f"{curr_sym}{curr_p:,.2f}")
-            p_col4.metric("Unrealized P&L", f"{curr_sym}{pnl:+,.2f}", delta=f"{ret_pct:+.2f}%")
-            p_col5.markdown(f"**SL:** {curr_sym}{pos['stop_loss_price']:,.2f}<br>**TP:** {curr_sym}{pos.get('take_profit_price') or 0:,.2f}", unsafe_allow_html=True)
-
-            if p_col6.button("Close Position", key=f"close_{pos['id']}", type="primary"):
-                close_res = api_client.close_position(pos["id"], exit_price=pos["current_price"])
-                if close_res.get("error"):
-                    st.error(f"Closure failed: {close_res.get('message')}")
-                else:
-                    st.success(f"Position {pos['symbol']} closed successfully!")
-                    st.rerun()
-
-    st.divider()
-
-    # 1% Risk Position Sizing & Virtual Order Placement
-    st.markdown(f"#### **Virtual Order Placement & 1% Risk Calculator ({active_currency})**")
-    st.caption("Positions are sized strictly so maximum loss at stop-loss does not exceed 1% of total virtual equity.")
-
-    latest_close = float(latest_snap.get("close_price") or (200.0 if is_us_market else 2500.0))
-    tick_step = 0.01 if is_us_market else 0.05
-
-    with st.form("virtual_buy_form"):
-        f_col1, f_col2, f_col3 = st.columns(3)
-        order_sym = f_col1.selectbox("Order Symbol", options=universe_symbols, index=universe_symbols.index(selected_symbol) if selected_symbol in universe_symbols else 0)
-        order_price = f_col2.number_input(f"Entry Price ({active_currency})", value=latest_close, min_value=0.1, step=tick_step)
-        default_sl = round(order_price * 0.98, 2)
-        order_sl = f_col3.number_input(f"Protective Stop-Loss ({active_currency})", value=default_sl, min_value=0.05, step=tick_step)
-
-        f_col4, f_col5 = st.columns(2)
-        default_tp = round(order_price + 2.0 * (order_price - order_sl), 2)
-        order_tp = f_col4.number_input(f"Take-Profit Target ({active_currency} - Min 2:1 R:R)", value=default_tp, min_value=order_price, step=tick_step)
-        manual_qty = f_col5.number_input("Quantity (Leave 0 for automatic 1% Risk Sizing)", value=0, min_value=0, step=1)
-
-        bypass_session_label = (
-            "Bypass market session hours (Simulate outside 09:30-16:00 ET)"
-            if is_us_market
-            else "Bypass market session hours (Simulate outside 09:15-15:30 IST)"
-        )
-        bypass_hours = st.checkbox(bypass_session_label, value=True)
-
-        # Preview Size Calculation
-        risk_per_sh = max(0.01, order_price - order_sl)
-        budget_1pct = equity_val * 0.01
-        est_qty = int(budget_1pct // risk_per_sh) if manual_qty == 0 else manual_qty
-        est_cap = est_qty * order_price
-        st.caption(f"Estimated Position Size: **{est_qty} shares** • Capital Required: **{curr_sym}{est_cap:,.2f}** • Max Risk at Stop: **{curr_sym}{est_qty * risk_per_sh:,.2f}** ({est_qty * risk_per_sh / equity_val * 100:.2f}% equity)")
-
-        fee_desc = (
-            "US Regulatory Charges: Zero Brokerage ($0.00), SEC Section 31 Fee on sell (0.0000278), FINRA TAF ($0.000166/sh), 5 bps slippage."
-            if is_us_market
-            else "Indian Regulatory Charges: Flat ₹20 Brokerage, 0.1% STT on turnover, GST 18%, Stamp Duty 0.015%, 5 bps slippage."
-        )
-        st.caption(f"ℹ️ {fee_desc}")
-
-        submitted = st.form_submit_button("🚀 Submit Virtual Paper Order", use_container_width=True)
-        if submitted:
-            with st.spinner("Validating risk constraints and routing virtual paper order..."):
-                buy_res = api_client.place_buy_order(
-                    symbol=order_sym,
-                    price=order_price,
-                    stop_loss_price=order_sl,
-                    take_profit_price=order_tp,
-                    quantity=None if manual_qty == 0 else manual_qty,
-                    enforce_market_hours=not bypass_hours,
-                    reason=f"Dashboard Virtual Entry ({active_market})",
-                )
-
-            if buy_res.get("error"):
-                st.error(f"Order Placement Rejected: {buy_res.get('message')}")
-            else:
-                st.success(f"Order FILLED! Bought {buy_res.get('quantity')} shares of {buy_res.get('symbol')} @ {curr_sym}{buy_res.get('executed_price')}. Order ID: {buy_res.get('order_id')}")
-                st.rerun()
-
-
-# ==============================================================================
-# TAB 4: Trade Ledger & Performance Analytics
-# ==============================================================================
-with tab_ledger:
-    st.markdown(f"### **Trade Ledger & Performance Analytics ({active_currency})**")
-
-    metrics_data = api_client.get_metrics(currency=active_currency)
-    orders_data = api_client.get_orders(limit=50, currency=active_currency)
-
-    # Floating Exposure & Portfolio P&L Overview
-    k_col1, k_col2, k_col3 = st.columns(3)
-    k_col1.metric("Open Floating P&L", f"{curr_sym}{portfolio.get('total_unrealized_pnl_inr', 0.0):+,.2f}", f"{portfolio.get('open_positions_count', 0)} Active Positions")
-    k_col2.metric("Net Closed Realized P&L", f"{curr_sym}{metrics_data.get('total_net_realized_pnl_inr', 0.0):+,.2f}", f"{metrics_data.get('total_trades', 0)} Closed Trades")
-    k_col3.metric("Total Account P&L", f"{curr_sym}{portfolio.get('total_pnl_inr', 0.0):+,.2f}", delta=f"{portfolio.get('return_on_initial_capital_pct', 0.0):+.2f}%")
-
-    st.markdown("##### **Closed Trades & Efficiency Metrics**")
-    # KPI Summary Cards
-    m_c1, m_c2, m_c3, m_c4, m_c5, m_c6 = st.columns(6)
-    m_c1.metric("Win Rate", f"{metrics_data.get('win_rate_pct', 0.0):.1f}%", f"{metrics_data.get('winning_trades', 0)}W / {metrics_data.get('losing_trades', 0)}L")
-    m_c2.metric("Profit Factor", f"{metrics_data.get('profit_factor', 0.0):.2f}")
-    m_c3.metric("Net Realized P&L", f"{curr_sym}{metrics_data.get('total_net_realized_pnl_inr', 0.0):+,.2f}")
-    m_c4.metric("Charges Paid", f"{curr_sym}{metrics_data.get('total_charges_paid_inr', 0.0):,.2f}")
-    m_c5.metric("Max Drawdown", f"{metrics_data.get('max_drawdown_pct', 0.0):.2f}%", f"-{curr_sym}{metrics_data.get('max_drawdown_inr', 0.0):,.2f}")
-    m_c6.metric("Sharpe Ratio", f"{metrics_data.get('sharpe_ratio') or 'N/A'}")
-
-    st.divider()
-
-    # Portfolio Equity Curve Plotly Chart
-    if orders_data:
-        eq_curve = [float(portfolio.get("initial_capital_inr", default_cap)), float(equity_val)]
-        eq_fig = create_equity_curve_chart(["Start", "Current"], eq_curve, initial_capital=float(portfolio.get("initial_capital_inr", default_cap)))
-        if eq_fig:
-            st.plotly_chart(eq_fig, use_container_width=True)
-
-    # Order History Table
-    st.markdown(f"#### **Executed Virtual Orders Audit Trail ({active_currency})**")
-    if not orders_data:
-        st.info(f"No {active_currency} orders executed yet in this session.")
-    else:
-        st.dataframe(
-            orders_data,
-            use_container_width=True,
-            column_config={
-                "client_order_id": "Order ID",
-                "symbol": "Symbol",
-                "side": "Side",
-                "quantity": "Qty",
-                "executed_price": st.column_config.NumberColumn(f"Fill Price ({active_currency})", format=f"{curr_sym}%.2f"),
-                "turnover_inr": st.column_config.NumberColumn(f"Turnover ({active_currency})", format=f"{curr_sym}%.2f"),
-                "total_charges_inr": st.column_config.NumberColumn(f"Charges ({active_currency})", format=f"{curr_sym}%.2f"),
-                "net_cash_impact_inr": st.column_config.NumberColumn(f"Net Cash ({active_currency})", format=f"{curr_sym}%.2f"),
-                "executed_at": "Execution Time",
-                "reason": "Reason",
-            },
-        )
-
-
-# ==============================================================================
-# TAB 5: Historical Backtesting Engine
-# ==============================================================================
-with tab_backtest:
-    st.markdown(f"### **Walk-Forward Historical Strategy Backtesting ({active_currency})**")
-    backtest_caption = (
-        "Walk-forward simulation with zero look-ahead bias, accounting for US zero-commission trading, SEC/FINRA exit charges, and 5 bps adverse slippage."
-        if is_us_market
-        else "Walk-forward simulation with zero look-ahead bias, accounting for Indian delivery frictions (STT, Brokerage, GST, Stamp Duty) and 5 bps adverse slippage."
-    )
-    st.caption(backtest_caption)
-
-    with st.form("backtest_form"):
-        bt_c1, bt_c2, bt_c3, bt_c4 = st.columns(4)
-        bt_symbol = bt_c1.selectbox("Backtest Instrument", options=universe_symbols, index=universe_symbols.index(selected_symbol) if selected_symbol in universe_symbols else 0)
-        bt_period = bt_c2.selectbox("Lookback Window", options=["6mo", "1y", "2y"], index=1)
-        bt_capital = bt_c3.number_input(f"Starting Capital ({active_currency})", value=default_cap, step=5000.0 if is_us_market else 10000.0)
-        bt_risk = bt_c4.number_input("Risk Per Trade (Fraction)", value=0.01, min_value=0.005, max_value=0.05, step=0.005, format="%.3f")
-
-        bt_submit = st.form_submit_button("▶️ Run Quantitative Backtest", use_container_width=True)
-
-    if bt_submit or st.session_state.get(f"bt_done_{selected_symbol}"):
-        with st.spinner(f"Executing bar-by-bar simulation for {bt_symbol} ({bt_period})..."):
-            bt_res = api_client.run_backtest(
-                symbol=bt_symbol,
-                timeframe="1d",
-                period=bt_period,
-                initial_capital_inr=bt_capital,
-                max_risk_per_trade=bt_risk,
-                slippage_bps=5.0,
-            )
-
-        if bt_res.get("error"):
-            st.error(f"Backtest execution failed: {bt_res.get('message')}")
-        else:
-            st.session_state[f"bt_done_{selected_symbol}"] = True
-            metrics = bt_res.get("metrics", {})
-            st.markdown(f"#### **Backtest Results: {bt_res.get('symbol')} ({bt_res.get('total_bars')} bars, {bt_res.get('strategy_name')})**")
-
-            res_c1, res_c2, res_c3, res_c4, res_c5, res_c6 = st.columns(6)
-            res_c1.metric("Total Return", f"{bt_res.get('total_return_pct'):+.2f}%", f"{curr_sym}{bt_res.get('total_net_profit_inr'):+,.2f}")
-            res_c2.metric("Win Rate", f"{metrics.get('win_rate_pct', 0.0):.1f}%", f"{metrics.get('winning_trades', 0)}W / {metrics.get('losing_trades', 0)}L")
-            res_c3.metric("Profit Factor", f"{metrics.get('profit_factor', 0.0):.2f}")
-            res_c4.metric("Friction Paid", f"{curr_sym}{metrics.get('total_charges_paid_inr', 0.0):,.2f}")
-            res_c5.metric("Max Drawdown", f"{metrics.get('max_drawdown_pct', 0.0):.2f}%", f"-{curr_sym}{metrics.get('max_drawdown_inr', 0.0):,.2f}")
-            res_c6.metric("Sharpe Ratio", f"{metrics.get('sharpe_ratio') or 'N/A'}")
-
-            # Plot Equity Curve from backtest
-            eq_curve_raw = bt_res.get("equity_curve", [])
-            if eq_curve_raw:
-                eq_ts = [pt["timestamp"] for pt in eq_curve_raw]
-                eq_vals = [pt["equity"] for pt in eq_curve_raw]
-                bt_fig = create_equity_curve_chart(eq_ts, eq_vals, initial_capital=bt_capital)
-                if bt_fig:
-                    st.plotly_chart(bt_fig, use_container_width=True)
-
-            # Trades Table
-            trades_list = bt_res.get("trades", [])
-            st.markdown(f"##### **Closed Trades Log ({len(trades_list)} Total Trades)**")
-            if not trades_list:
-                st.info("No trades triggered under strict strategy confluence rules during this window.")
-            else:
-                st.dataframe(
-                    trades_list,
-                    use_container_width=True,
-                    column_config={
-                        "trade_id": "#",
-                        "symbol": "Symbol",
-                        "side": "Side",
-                        "quantity": "Qty",
-                        "entry_price": st.column_config.NumberColumn(f"Entry ({active_currency})", format=f"{curr_sym}%.2f"),
-                        "exit_price": st.column_config.NumberColumn(f"Exit ({active_currency})", format=f"{curr_sym}%.2f"),
-                        "exit_reason": "Exit Reason",
-                        "net_pnl_inr": st.column_config.NumberColumn(f"Net P&L ({active_currency})", format=f"{curr_sym}%.2f"),
-                        "total_charges_inr": st.column_config.NumberColumn(f"Charges ({active_currency})", format=f"{curr_sym}%.2f"),
-                        "return_pct": st.column_config.NumberColumn("Return %", format="%.2f%%"),
-                        "holding_period_bars": "Holding Bars",
-                        "entry_time": "Entry Date",
-                        "exit_time": "Exit Date",
-                    },
-                )
-
-
-# ==============================================================================
-# TAB 6: System Health & Freshness
-# ==============================================================================
-with tab_health:
-    st.markdown("### **System Infrastructure, Multi-Market Calendars & Compliance**")
-
-    h_col1, h_col2 = st.columns(2)
-
-    with h_col1:
-        st.markdown("#### **Backend Service & Database Probes**")
-        db_health = health_ready.get("database", {})
-        st.write(f"- **FastAPI Backend Liveness:** {'🟢 ONLINE' if not health_ready.get('error') else '🔴 OFFLINE'}")
-        st.write(f"- **PostgreSQL Readiness:** {'🟢 CONNECTED' if db_health.get('connected') else '🔴 DISCONNECTED'}")
-        st.write(f"- **Database Query Roundtrip Latency:** `{db_health.get('latency_ms', 0)} ms`")
-        st.write(f"- **Real Order Execution Safeguard:** `LOCKED (Paper Trading Mode)`")
-        st.write(f"- **Emergency Kill Switch:** `{'ACTIVE (HALTED)' if kill_switch_active else 'STANDBY (NORMAL)'}`")
-
-    with h_col2:
-        st.markdown("#### **Multi-Market Trading Sessions & Calendar Rules**")
-        st.write("- **🇮🇳 India (NSE):** 09:15 to 15:30 IST • Tick: ₹0.05 • STT + GST + Stamp Duty")
-        st.write("- **🇺🇸 United States (NYSE/NASDAQ):** 09:30 to 16:00 ET • Tick: $0.01 • Zero Brokerage + SEC/FINRA")
-        st.write("- **Market Data Provider:** Yahoo Finance (Delayed quotes for research)")
-        st.write(f"- **Active Virtual Currency:** `{active_currency}` ({curr_sym})")
-
-    st.divider()
-
-    st.markdown("#### **Active Universe Coverage ({active_market} Market — {len(universe):,} Listed Equities)**")
-    st.dataframe(
-        universe,
-        use_container_width=True,
-        column_config={
-            "symbol": "Symbol",
-            "company_name": "Company Name",
-            "sector": "Sector",
-            "exchange": "Exchange",
-            "tick_size": st.column_config.NumberColumn(f"Tick Size ({active_currency})", format=f"{curr_sym}%.2f"),
-            "lot_size": "Lot Size",
-            "currency": "Currency",
-            "market": "Market",
-        },
-    )
-
-    st.divider()
-
-    st.markdown("#### **User Profile & Programmatic API Access**")
-    p_col1, p_col2 = st.columns(2)
-    with p_col1:
-        st.write(f"- **Username:** `{current_user.get('username')}`")
-        st.write(f"- **Email:** `{current_user.get('email')}`")
-        st.write(f"- **Assigned RBAC Role:** `{user_role.upper()}`")
-        st.write(f"- **Account Scope:** `{current_user.get('username')}'s {active_currency} Account`")
-    with p_col2:
-        st.write("- **Programmatic API Key (`X-API-Key` header):**")
-        api_key_val = current_user.get("api_key") or "None configured"
-        st.code(api_key_val, language="bash")
-        if st.button("🔑 Generate / Rotate API Key"):
-            rot_resp = api_client.generate_api_key()
-            if rot_resp.get("api_key"):
-                current_user["api_key"] = rot_resp["api_key"]
-                st.session_state["user_profile"] = current_user
-                st.success("New API key generated successfully!")
-                st.rerun()
-
-
-# ==============================================================================
-# TAB 8: Admin User & Account Management (Admin RBAC Only)
-# ==============================================================================
-if hasattr(st, "dialog"):
-    @st.dialog("⚡ Quick Paper Capital Adjustment")
-    def capital_adjustment_dialog(account_id: int, account_name: str, current_balance: float, currency: str):
-        curr_symbol = "$" if currency == "USD" else "₹"
-        st.markdown(f"**Target Account:** `{account_name}` (ID: {account_id})")
-        st.markdown(f"**Current Balance:** `{curr_symbol}{current_balance:,.2f}`")
-        adj_mode = st.radio("Adjustment Action", ["Inject Capital", "Reset Balance to Baseline"], horizontal=True, key=f"dlg_mode_{account_id}")
-        if adj_mode == "Inject Capital":
-            fund_amt = st.number_input(f"Amount to Add ({currency})", min_value=1.0, value=50000.0, step=5000.0, key=f"dlg_amt_{account_id}")
-            fund_rsn = st.text_input("Funding Reason", value="Admin Capital Grant", key=f"dlg_rsn_{account_id}")
-            if st.button("💰 Confirm Capital Injection", type="primary", use_container_width=True, key=f"dlg_btn_fund_{account_id}"):
-                res = api_client.fund_account(account_id, fund_amt, fund_rsn)
-                if res.get("error"):
-                    st.error(res.get("message"))
-                else:
-                    st.success(f"Funded {curr_symbol}{fund_amt:,.2f} successfully!")
-                    st.rerun()
-        else:
-            default_base = 25000.0 if currency == "USD" else 100000.0
-            reset_bal = st.number_input(f"New Baseline Balance ({currency})", min_value=1000.0, value=default_base, step=5000.0, key=f"dlg_new_{account_id}")
-            reset_rsn = st.text_input("Reset Reason", value="Admin Periodic Reset", key=f"dlg_rst_rsn_{account_id}")
-            st.caption("⚠️ Resetting closes all open positions and cancels pending orders.")
-            if st.button("🔄 Execute Account Reset", type="primary", use_container_width=True, key=f"dlg_btn_rst_{account_id}"):
-                res = api_client.reset_account_admin(account_id, reset_bal, reset_rsn)
-                if res.get("error"):
-                    st.error(res.get("message"))
-                else:
-                    st.success(f"Account reset to {curr_symbol}{reset_bal:,.2f} successfully!")
-                    st.rerun()
-
-if is_admin and tab_admin:
-    with tab_admin:
-        st.markdown(
-            """
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <div>
-                    <h2 style="margin: 0; font-size: 24px; font-weight: 700; color: #F8FAFC;">
-                        👤 Admin User & Account Management
-                    </h2>
-                    <div style="font-size: 13px; color: #8F9CAE; margin-top: 4px;">
-                        Platform Governance • RBAC Role Assignment • Virtual Capital Controls • Audit Trail
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        # 1. Summary KPI Metric Cards
-        summary = api_client.get_admin_summary()
-        col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
-        col_kpi1.metric(
-            "Total Users",
-            f"{summary.get('total_users', 0)}",
-            delta=f"{summary.get('active_users', 0)} Active",
-        )
-        col_kpi2.metric(
-            "Active Accounts",
-            f"{summary.get('active_accounts', 0)}",
-            delta="Operational",
-        )
-        col_kpi3.metric(
-            "Managed Capital",
-            f"₹{summary.get('total_capital_inr', 0):,.0f}",
-            delta=f"${summary.get('total_capital_usd', 0):,.0f} USD",
-        )
-        col_kpi4.metric(
-            "Audit Events",
-            f"{summary.get('audit_events_count', 0)}",
-            delta="Immutable Log",
-        )
-
-        st.divider()
-
-        # 2. User Directory & Filter Toolbar
-        st.markdown("#### **📋 User Directory & Account Overview**")
-        col_srch, col_role_fltr, col_stat_fltr = st.columns([2.5, 1.2, 1.2])
-        with col_srch:
-            admin_search = st.text_input(
-                "🔍 Search Users",
-                placeholder="Search username or email...",
-                key="admin_search_input",
-            )
-        with col_role_fltr:
-            admin_role_fltr = st.selectbox(
-                "Role Filter",
-                ["All Roles", "ADMIN", "TRADER", "VIEWER"],
-                key="admin_role_filter_sel",
-            )
-        with col_stat_fltr:
-            admin_stat_fltr = st.selectbox(
-                "Status Filter",
-                ["All Status", "Active", "Inactive"],
-                key="admin_status_filter_sel",
-            )
-
-        filter_is_active = None
-        if admin_stat_fltr == "Active":
-            filter_is_active = True
-        elif admin_stat_fltr == "Inactive":
-            filter_is_active = False
-
-        filter_role = None if admin_role_fltr == "All Roles" else admin_role_fltr.lower()
-
-        users_resp = api_client.get_admin_users(
-            page=1,
-            limit=50,
-            role=filter_role,
-            is_active=filter_is_active,
-            search=admin_search if admin_search.strip() else None,
-        )
-        users_list = users_resp.get("users", [])
-
-        if not users_list:
-            st.info("No users match the search and filter criteria.")
-        else:
-            st.dataframe(
-                users_list,
-                use_container_width=True,
-                column_config={
-                    "id": st.column_config.NumberColumn("User ID", format="%d"),
-                    "username": "Username",
-                    "email": "Email",
-                    "role": "Role",
-                    "is_active": st.column_config.CheckboxColumn("Active"),
-                    "accounts_count": st.column_config.NumberColumn("Accounts", format="%d"),
-                    "total_equity_inr": st.column_config.NumberColumn("Equity (INR)", format="₹%,.2f"),
-                    "total_equity_usd": st.column_config.NumberColumn("Equity (USD)", format="$%,.2f"),
-                    "api_key_masked": "API Key",
-                    "created_at": "Joined",
-                },
-            )
-
-        st.divider()
-
-        # 3. Action Workbench
-        st.markdown("#### **⚙️ Administrative Action Workbench**")
-        if not users_list:
-            st.warning("No users available to manage.")
-        else:
-            col_wb_left, col_wb_right = st.columns(2)
-
-            user_options = {f"{u['username']} (ID: {u['id']} - {u['role'].upper()})": u for u in users_list}
-            selected_label = st.selectbox("Select Target User", list(user_options.keys()), key="admin_target_user_sel")
-            target_user = user_options[selected_label]
-            target_user_id = target_user["id"]
-            is_self = target_user_id == current_user.get("id")
-
-            with col_wb_left:
-                st.markdown("##### **User RBAC & Credentials**")
-                if is_self:
-                    st.info("🛡️ *You are viewing your own administrator account. Self-demotion and self-deactivation are guarded against lockout.*")
-
-                # Role Update
-                curr_role = target_user["role"].upper()
-                role_choices = ["ADMIN", "TRADER", "VIEWER"]
-                curr_role_idx = role_choices.index(curr_role) if curr_role in role_choices else 1
-                new_role = st.selectbox("Assign RBAC Role", role_choices, index=curr_role_idx, key=f"wb_role_{target_user_id}")
-                if st.button("🔄 Update User Role", use_container_width=True, key=f"btn_upd_role_{target_user_id}"):
-                    if is_self and new_role != "ADMIN":
-                        st.error("Cannot demote your own administrator account.")
-                    else:
-                        resp = api_client.update_user_role(target_user_id, new_role.lower())
-                        if resp.get("error"):
-                            st.error(resp.get("message"))
-                        else:
-                            st.success(f"Role updated to {new_role} successfully!")
-                            st.rerun()
-
-                # Status Toggle
-                st.markdown("---")
-                status_reason = st.text_input("Status Change Reason (Optional)", key=f"wb_stat_rsn_{target_user_id}")
-                if target_user["is_active"]:
-                    deact_disabled = is_self
-                    if st.button("🔴 Deactivate User", disabled=deact_disabled, use_container_width=True, key=f"btn_deact_{target_user_id}"):
-                        resp = api_client.toggle_user_status(target_user_id, False, status_reason)
-                        if resp.get("error"):
-                            st.error(resp.get("message"))
-                        else:
-                            st.success("User deactivated successfully!")
-                            st.rerun()
-                else:
-                    if st.button("🟢 Reactivate User", use_container_width=True, key=f"btn_react_{target_user_id}"):
-                        resp = api_client.toggle_user_status(target_user_id, True, status_reason)
-                        if resp.get("error"):
-                            st.error(resp.get("message"))
-                        else:
-                            st.success("User reactivated successfully!")
-                            st.rerun()
-
-                # API Key Management
-                st.markdown("---")
-                st.write(f"- **Current API Key:** `{target_user.get('api_key_masked') or 'None configured'}`")
-                k_btn1, k_btn2 = st.columns(2)
-                with k_btn1:
-                    if st.button("🔑 Rotate Key", use_container_width=True, key=f"btn_rot_k_{target_user_id}"):
-                        resp = api_client.rotate_user_api_key(target_user_id)
-                        if resp.get("error"):
-                            st.error(resp.get("message"))
-                        else:
-                            st.success("API key rotated successfully!")
-                            st.rerun()
-                with k_btn2:
-                    if st.button("🚫 Revoke Key", use_container_width=True, key=f"btn_rev_k_{target_user_id}"):
-                        resp = api_client.revoke_user_api_key(target_user_id)
-                        if resp.get("error"):
-                            st.error(resp.get("message"))
-                        else:
-                            st.success("API key revoked successfully!")
-                            st.rerun()
-
-                # Administrative Password Reset
-                st.markdown("---")
-                st.markdown("##### **🔑 Administrative Password Override**")
-                st.caption(f"Directly reset credentials for `{target_user['username']}` with mandatory audit logging.")
-
-                col_pw_in, col_pw_gen = st.columns([2, 1])
-                with col_pw_gen:
-                    st.write("")
-                    st.write("")
-                    if st.button("🎲 Generate", key=f"btn_gen_pw_{target_user_id}", help="Generate temporary high-entropy password"):
-                        generated_pw = f"QT-{secrets.token_hex(4).upper()}#{secrets.token_urlsafe(4)}"
-                        st.session_state[f"gen_pw_{target_user_id}"] = generated_pw
-
-                cached_gen_pw = st.session_state.get(f"gen_pw_{target_user_id}", "")
-                with col_pw_in:
-                    admin_new_pw = st.text_input(
-                        "New Password",
-                        value=cached_gen_pw,
-                        type="password" if not cached_gen_pw else "default",
-                        placeholder="Min 8 characters",
-                        key=f"adm_new_pw_{target_user_id}",
-                    )
-
-                admin_pw_reason = st.text_input(
-                    "Override Reason (Optional)",
-                    placeholder="e.g. User requested unlock via support ticket",
-                    key=f"adm_pw_rsn_{target_user_id}",
-                )
-
-                if st.button("🔐 Override User Password", use_container_width=True, key=f"btn_ovr_pw_{target_user_id}"):
-                    effective_pw = admin_new_pw.strip() if admin_new_pw else ""
-                    if not effective_pw or len(effective_pw) < 8:
-                        st.error("Password must be at least 8 characters long.")
-                    else:
-                        resp = api_client.admin_reset_user_password(target_user_id, effective_pw, admin_pw_reason)
-                        if resp.get("error"):
-                            st.error(resp.get("message"))
-                        else:
-                            st.success(f"Password for '{target_user['username']}' successfully reset and logged to audit trail!")
-                            st.session_state.pop(f"gen_pw_{target_user_id}", None)
-                            st.rerun()
-
-
-            with col_wb_right:
-                st.markdown("##### **Virtual Capital & Account Lifecycle**")
-                details_resp = api_client.get_admin_user_details(target_user_id)
-                accounts_list = details_resp.get("accounts", [])
-
-                if not accounts_list:
-                    st.info(f"User '{target_user['username']}' has no associated trading accounts.")
-                else:
-                    account_options = {
-                        f"{a['account_name']} (ID: {a['id']} - {a['currency']})": a
-                        for a in accounts_list
-                    }
-                    selected_acc_label = st.selectbox(
-                        "Select Paper Account",
-                        list(account_options.keys()),
-                        key=f"wb_acc_sel_{target_user_id}",
-                    )
-                    target_account = account_options[selected_acc_label]
-                    target_acc_id = target_account["id"]
-                    acc_curr = target_account["currency"]
-                    curr_sym_acc = "$" if acc_curr == "USD" else "₹"
-
-                    st.metric(
-                        f"Account Equity ({acc_curr})",
-                        f"{curr_sym_acc}{target_account['equity']:,.2f}",
-                        delta=f"Cash: {curr_sym_acc}{target_account['cash_balance']:,.2f}",
-                    )
-
-                    if hasattr(st, "dialog"):
-                        if st.button("⚡ Open Quick Adjustment Modal", use_container_width=True, key=f"btn_open_dlg_{target_acc_id}"):
-                            capital_adjustment_dialog(
-                                target_acc_id,
-                                target_account["account_name"],
-                                target_account["cash_balance"],
-                                acc_curr,
-                            )
-
-                    action_mode = st.radio(
-                        "Action Mode",
-                        ["💰 Fund Capital", "🔄 Reset Balance", "📦 Archive Account"],
-                        horizontal=True,
-                        key=f"wb_act_mode_{target_acc_id}",
-                    )
-
-                    if action_mode == "💰 Fund Capital":
-                        fund_amount = st.number_input(
-                            f"Capital to Inject ({acc_curr})",
-                            min_value=1.0,
-                            value=50000.0,
-                            step=5000.0,
-                            key=f"wb_fund_amt_{target_acc_id}",
-                        )
-                        fund_reason = st.text_input(
-                            "Funding Reason",
-                            value="Admin Capital Injection",
-                            key=f"wb_fund_rsn_{target_acc_id}",
-                        )
-                        if st.button("Inject Virtual Capital", type="primary", use_container_width=True, key=f"btn_do_fund_{target_acc_id}"):
-                            res = api_client.fund_account(target_acc_id, fund_amount, fund_reason)
-                            if res.get("error"):
-                                st.error(res.get("message"))
-                            else:
-                                st.success(f"Successfully injected {curr_sym_acc}{fund_amount:,.2f}!")
-                                st.rerun()
-
-                    elif action_mode == "🔄 Reset Balance":
-                        default_reset = 25000.0 if acc_curr == "USD" else 100000.0
-                        reset_amount = st.number_input(
-                            f"Reset Baseline Capital ({acc_curr})",
-                            min_value=1000.0,
-                            value=default_reset,
-                            step=5000.0,
-                            key=f"wb_rst_amt_{target_acc_id}",
-                        )
-                        reset_reason = st.text_input(
-                            "Reset Reason",
-                            value="Admin Baseline Reset",
-                            key=f"wb_rst_rsn_{target_acc_id}",
-                        )
-                        st.caption("⚠️ Closes all open positions and cancels pending orders.")
-                        if st.button("Execute Reset Baseline", type="primary", use_container_width=True, key=f"btn_do_reset_{target_acc_id}"):
-                            res = api_client.reset_account_admin(target_acc_id, reset_amount, reset_reason)
-                            if res.get("error"):
-                                st.error(res.get("message"))
-                            else:
-                                st.success(f"Account reset to {curr_sym_acc}{reset_amount:,.2f}!")
-                                st.rerun()
-
-                    else:
-                        st.caption("📦 Archiving marks the account inactive (`is_active = False`) and prevents future trading.")
-                        if st.button("Confirm Account Archival", type="secondary", use_container_width=True, key=f"btn_do_archive_{target_acc_id}"):
-                            res = api_client.delete_account_admin(target_acc_id)
-                            if res.get("error"):
-                                st.error(res.get("message"))
-                            else:
-                                st.success("Account archived successfully!")
-                                st.rerun()
-
-        st.divider()
-
-        # 4. Administrative Audit Trail Ledger
-        st.markdown("#### **🛡️ Administrative Audit Trail Ledger**")
-        col_aud_fltr, _ = st.columns([2, 3])
-        with col_aud_fltr:
-            aud_action_fltr = st.selectbox(
-                "Filter Audit Actions",
-                [
-                    "All Actions",
-                    "ROLE_UPDATE",
-                    "STATUS_TOGGLE",
-                    "CAPITAL_FUND",
-                    "CAPITAL_RESET",
-                    "ACCOUNT_ARCHIVE",
-                    "API_KEY_ROTATE",
-                    "API_KEY_REVOKE",
-                ],
-                key="admin_audit_action_filter",
-            )
-
-        aud_resp = api_client.get_admin_audit_logs(
-            page=1,
-            limit=50,
-            action=aud_action_fltr,
-        )
-        audit_logs = aud_resp.get("logs", [])
-        if not audit_logs:
-            st.info("No administrative audit entries recorded yet.")
-        else:
-            st.dataframe(
-                audit_logs,
-                use_container_width=True,
-                column_config={
-                    "id": st.column_config.NumberColumn("Log ID", format="%d"),
-                    "timestamp": "Timestamp (UTC)",
-                    "admin_username": "Admin",
-                    "action": "Action",
-                    "target_user_id": st.column_config.NumberColumn("Target User ID", format="%d"),
-                    "target_account_id": st.column_config.NumberColumn("Target Account ID", format="%d"),
-                    "details": "Details",
-                    "ip_address": "IP Address",
-                },
-            )
-
-
-
-# --- Background Live Polling & Autonomous Trading Loop ---
+# 8. Background Polling & Live Stream Loop
 if auto_refresh:
     import time
     if auto_trade_on_refresh and not kill_switch_active:

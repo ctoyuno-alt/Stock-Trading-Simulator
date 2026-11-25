@@ -14,11 +14,13 @@ try:
     from plotly.subplots import make_subplots
     HAS_PLOTLY = True
 except ImportError:
+    go = None
+    make_subplots = None
     HAS_PLOTLY = False
 
 
 def create_candlestick_with_indicators(
-    candles_dict: Dict[str, Any],
+    candles_dict: Optional[Dict[str, Any]],
     indicators_dict: Optional[Dict[str, Any]] = None,
     symbol: str = "INSTRUMENT",
 ) -> Any:
@@ -31,16 +33,19 @@ def create_candlestick_with_indicators(
     if not HAS_PLOTLY:
         return None
 
+    if not candles_dict or not isinstance(candles_dict, dict):
+        return None
+
     raw_candles = candles_dict.get("candles", [])
     if not raw_candles:
         return None
 
-    timestamps = [c["timestamp"] for c in raw_candles]
-    opens = [c["open"] for c in raw_candles]
-    highs = [c["high"] for c in raw_candles]
-    lows = [c["low"] for c in raw_candles]
-    closes = [c["close"] for c in raw_candles]
-    volumes = [c["volume"] for c in raw_candles]
+    timestamps = [c.get("timestamp", "") for c in raw_candles]
+    opens = [float(c.get("open", 0.0)) for c in raw_candles]
+    highs = [float(c.get("high", 0.0)) for c in raw_candles]
+    lows = [float(c.get("low", 0.0)) for c in raw_candles]
+    closes = [float(c.get("close", 0.0)) for c in raw_candles]
+    volumes = [float(c.get("volume", 0.0)) for c in raw_candles]
 
     fig = make_subplots(
         rows=3,
@@ -62,8 +67,10 @@ def create_candlestick_with_indicators(
             name="OHLC",
             increasing_line_color="#00E676",
             increasing_fillcolor="#00E676",
-            decreasing_line_color="#FF3B30",
-            decreasing_fillcolor="#FF3B30",
+            decreasing_line_color="#FF3366",
+            decreasing_fillcolor="#FF3366",
+            hoverinfo="x+y",
+            hovertemplate="<b>%{x}</b><br>O: %{open:,.2f}<br>H: %{high:,.2f}<br>L: %{low:,.2f}<br>C: %{close:,.2f}<extra></extra>",
         ),
         row=1,
         col=1,
@@ -83,7 +90,7 @@ def create_candlestick_with_indicators(
             )
         if ema_50:
             fig.add_trace(
-                go.Scatter(x=timestamps, y=ema_50, mode="lines", name="EMA 50", line=dict(color="#FF9100", width=1.5)),
+                go.Scatter(x=timestamps, y=ema_50, mode="lines", name="EMA 50", line=dict(color="#FF9900", width=1.5)),
                 row=1,
                 col=1,
             )
@@ -95,7 +102,7 @@ def create_candlestick_with_indicators(
             )
 
     # 2. Volume Bar Chart
-    vol_colors = ["#00E676" if closes[i] >= opens[i] else "#FF3B30" for i in range(len(closes))]
+    vol_colors = ["#00E676" if closes[i] >= opens[i] else "#FF3366" for i in range(len(closes))]
     fig.add_trace(
         go.Bar(x=timestamps, y=volumes, name="Volume", marker_color=vol_colors, opacity=0.7),
         row=2,
@@ -114,12 +121,12 @@ def create_candlestick_with_indicators(
             col=1,
         )
         fig.add_trace(
-            go.Scatter(x=timestamps, y=s_line, mode="lines", name="Signal", line=dict(color="#FF9100", width=1.5)),
+            go.Scatter(x=timestamps, y=s_line, mode="lines", name="Signal", line=dict(color="#FF9900", width=1.5)),
             row=3,
             col=1,
         )
         if hist:
-            hist_colors = ["#00E676" if (h or 0) >= 0 else "#FF3B30" for h in hist]
+            hist_colors = ["#00E676" if (h or 0) >= 0 else "#FF3366" for h in hist]
             fig.add_trace(
                 go.Bar(x=timestamps, y=hist, name="Hist", marker_color=hist_colors, opacity=0.75),
                 row=3,
@@ -146,13 +153,13 @@ def create_candlestick_with_indicators(
         hovermode="x unified",
     )
     fig.update_xaxes(
-        gridcolor="rgba(255, 255, 255, 0.05)",
-        zerolinecolor="rgba(255, 255, 255, 0.05)",
+        gridcolor="rgba(30, 38, 56, 0.7)",
+        zerolinecolor="rgba(30, 38, 56, 0.9)",
         tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
     )
     fig.update_yaxes(
-        gridcolor="rgba(255, 255, 255, 0.05)",
-        zerolinecolor="rgba(255, 255, 255, 0.05)",
+        gridcolor="rgba(30, 38, 56, 0.7)",
+        zerolinecolor="rgba(30, 38, 56, 0.9)",
         tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
     )
 
@@ -160,7 +167,7 @@ def create_candlestick_with_indicators(
 
 
 def create_rsi_chart(timestamps: List[str], rsi_values: List[Optional[float]]) -> Any:
-    """Plots RSI 14 with 70/30 overbought/oversold reference bands."""
+    """Plots RSI 14 with 70/30 overbought/oversold reference bands and corridor."""
     if not HAS_PLOTLY or not timestamps:
         return None
 
@@ -176,8 +183,17 @@ def create_rsi_chart(timestamps: List[str], rsi_values: List[Optional[float]]) -
         )
     )
 
+    # Shaded corridor between 30 and 70
+    fig.add_hrect(
+        y0=30,
+        y1=70,
+        fillcolor="rgba(168, 85, 247, 0.04)",
+        line_width=0,
+        layer="below",
+    )
+
     # Horizontal guide bands
-    fig.add_hline(y=70, line_dash="dash", line_color="#FF3B30", annotation_text="Overbought (70)", annotation_font_color="#FF3B30")
+    fig.add_hline(y=70, line_dash="dash", line_color="#FF3366", annotation_text="Overbought (70)", annotation_font_color="#FF3366")
     fig.add_hline(y=30, line_dash="dash", line_color="#00E676", annotation_text="Oversold (30)", annotation_font_color="#00E676")
     fig.add_hline(y=50, line_dash="dot", line_color="rgba(255, 255, 255, 0.2)")
 
@@ -190,11 +206,11 @@ def create_rsi_chart(timestamps: List[str], rsi_values: List[Optional[float]]) -
         height=250,
         yaxis=dict(
             range=[0, 100],
-            gridcolor="rgba(255, 255, 255, 0.05)",
+            gridcolor="rgba(30, 38, 56, 0.7)",
             tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
         ),
         xaxis=dict(
-            gridcolor="rgba(255, 255, 255, 0.05)",
+            gridcolor="rgba(30, 38, 56, 0.7)",
             tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
         ),
         margin=dict(l=30, r=30, t=40, b=30),
@@ -208,8 +224,10 @@ def create_equity_curve_chart(
     timestamps: List[str],
     equity_values: List[float],
     initial_capital: float = 100000.0,
+    benchmark_values: Optional[List[float]] = None,
+    benchmark_name: str = "Benchmark",
 ) -> Any:
-    """Plots virtual portfolio equity curve against initial starting capital benchmark."""
+    """Plots virtual portfolio equity curve against initial starting capital benchmark and optional benchmark curve."""
     if not HAS_PLOTLY or not equity_values:
         return None
 
@@ -228,13 +246,24 @@ def create_equity_curve_chart(
         )
     )
 
+    if benchmark_values and len(benchmark_values) == len(timestamps):
+        fig.add_trace(
+            go.Scatter(
+                x=timestamps,
+                y=benchmark_values,
+                mode="lines",
+                name=benchmark_name,
+                line=dict(color="#00F2FE", width=1.5, dash="dot"),
+            )
+        )
+
     # Initial Capital Benchmark Line
     fig.add_hline(
         y=initial_capital,
         line_dash="dot",
-        line_color="#FFB300",
+        line_color="#FF9900",
         annotation_text=f"Initial Capital ({initial_capital:,.2f})",
-        annotation_font_color="#FFB300",
+        annotation_font_color="#FF9900",
         annotation_position="bottom right",
     )
 
@@ -247,16 +276,73 @@ def create_equity_curve_chart(
         height=350,
         margin=dict(l=30, r=30, t=40, b=30),
         hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=11, color="#8F9CAE"),
+            bgcolor="rgba(14, 19, 31, 0.6)",
+        ),
     )
     fig.update_xaxes(
-        gridcolor="rgba(255, 255, 255, 0.05)",
-        zerolinecolor="rgba(255, 255, 255, 0.05)",
+        gridcolor="rgba(30, 38, 56, 0.7)",
+        zerolinecolor="rgba(30, 38, 56, 0.9)",
         tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
     )
     fig.update_yaxes(
-        gridcolor="rgba(255, 255, 255, 0.05)",
-        zerolinecolor="rgba(255, 255, 255, 0.05)",
+        gridcolor="rgba(30, 38, 56, 0.7)",
+        zerolinecolor="rgba(30, 38, 56, 0.9)",
         tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
     )
 
     return fig
+
+
+def create_underwater_drawdown_chart(
+    timestamps: List[str],
+    drawdown_pcts: List[float],
+) -> Any:
+    """Plots underwater drawdown curve (% from peak over time) with red filled area."""
+    if not HAS_PLOTLY or not timestamps or not drawdown_pcts:
+        return None
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=timestamps,
+            y=drawdown_pcts,
+            mode="lines",
+            name="Drawdown %",
+            line=dict(color="#FF3366", width=2),
+            fill="tozeroy",
+            fillcolor="rgba(255, 51, 102, 0.15)",
+        )
+    )
+
+    fig.add_hline(y=0.0, line_dash="solid", line_color="rgba(255, 255, 255, 0.3)", line_width=1)
+
+    fig.update_layout(
+        title="Underwater Drawdown Profile (% from Peak)",
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="JetBrains Mono, Inter, -apple-system, sans-serif", color="#8F9CAE", size=11),
+        height=280,
+        margin=dict(l=30, r=30, t=40, b=30),
+        yaxis=dict(
+            ticksuffix="%",
+            gridcolor="rgba(30, 38, 56, 0.7)",
+            tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
+        ),
+        xaxis=dict(
+            gridcolor="rgba(30, 38, 56, 0.7)",
+            tickfont=dict(family="JetBrains Mono, monospace", size=10, color="#8F9CAE"),
+        ),
+        hovermode="x unified",
+    )
+
+    return fig
+

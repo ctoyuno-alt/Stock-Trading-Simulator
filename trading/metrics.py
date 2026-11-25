@@ -186,3 +186,58 @@ def calculate_performance_metrics(
         max_drawdown_pct=max_dd_pct,
         sharpe_ratio=sharpe_ratio,
     )
+
+
+def reconstruct_multipoint_equity_curve(
+    initial_capital: float,
+    closed_trades_pnl: list,
+    unrealized_pnl: float = 0.0,
+    trade_timestamps: Optional[list] = None,
+) -> dict:
+    """
+    Reconstructs chronological multi-point equity curve (N+2 points).
+    Prevents the Tab 5 straight-line 2-point bug.
+    """
+    points = []
+    labels = []
+
+    # Point 0: Start
+    labels.append("Start")
+    points.append(float(initial_capital))
+
+    cum_equity = initial_capital
+    for idx, pnl in enumerate(closed_trades_pnl):
+        cum_equity += float(pnl)
+        lbl = trade_timestamps[idx] if trade_timestamps and idx < len(trade_timestamps) else f"Trade {idx + 1}"
+        labels.append(lbl)
+        points.append(round(cum_equity, 2))
+
+    # Terminal Point: Current (including mark-to-market unrealized P&L)
+    terminal_equity = cum_equity + float(unrealized_pnl)
+    labels.append("Current")
+    points.append(round(terminal_equity, 2))
+
+    # Peak-to-trough Drawdown %
+    peak = points[0]
+    max_dd_val = 0.0
+    max_dd_pct = 0.0
+    for p in points:
+        if p > peak:
+            peak = p
+        dd = peak - p
+        if dd > max_dd_val:
+            max_dd_val = dd
+        if peak > 0:
+            dd_pct = (dd / peak) * 100.0
+            if dd_pct > max_dd_pct:
+                max_dd_pct = dd_pct
+
+    return {
+        "labels": labels,
+        "equity_curve": points,
+        "total_points": len(points),  # Exactly N + 2
+        "final_equity": points[-1],
+        "max_drawdown_amount": round(max_dd_val, 2),
+        "max_drawdown_pct": round(max_dd_pct, 2),
+    }
+

@@ -18,6 +18,7 @@ Enforces:
 from dataclasses import dataclass
 from decimal import Decimal
 import logging
+import math
 from typing import List, Optional, Set
 from backend.app.core.config import get_settings
 from backend.app.core.market_schedule import is_market_open
@@ -283,3 +284,47 @@ def validate_order_risk(
         is_valid=len(rejections) == 0,
         rejection_reasons=rejections,
     )
+
+
+def calculate_rr_preview(entry: float, stop_loss: float, take_profit: float) -> dict:
+    """Calculates Risk:Reward ratio and validation status for UI preview."""
+    try:
+        e, sl, tp = float(entry), float(stop_loss), float(take_profit)
+    except (ValueError, TypeError):
+        return {"is_valid": False, "rr_ratio": 0.0, "reason": "Invalid numerical parameters."}
+    if math.isnan(e) or math.isnan(sl) or math.isnan(tp) or math.isinf(e) or math.isinf(sl) or math.isinf(tp):
+        return {"is_valid": False, "rr_ratio": 0.0, "reason": "Parameters cannot be NaN or infinite."}
+    if e <= 0:
+        return {"is_valid": False, "rr_ratio": 0.0, "reason": "Entry price must be positive."}
+    if sl >= e:
+        return {"is_valid": False, "rr_ratio": 0.0, "reason": "Stop-loss must be strictly below entry price."}
+    if tp <= e:
+        return {"is_valid": False, "rr_ratio": 0.0, "reason": "Take-profit must be strictly above entry price."}
+
+    risk_per_sh = e - sl
+    reward_per_sh = tp - e
+    rr_ratio = reward_per_sh / risk_per_sh if risk_per_sh > 0 else 0.0
+    sl_pct = (risk_per_sh / e) * 100.0
+    tp_pct = (reward_per_sh / e) * 100.0
+
+    if rr_ratio >= 2.0:
+        tier = "OPTIMAL"
+        status_color = "#00E676"  # Green
+    elif rr_ratio >= 1.5:
+        tier = "SUBOPTIMAL"
+        status_color = "#FF9900"  # Amber
+    else:
+        tier = "REJECTED"
+        status_color = "#FF3366"  # Red
+
+    return {
+        "is_valid": True,
+        "rr_ratio": round(rr_ratio, 2),
+        "risk_per_share": round(risk_per_sh, 2),
+        "reward_per_share": round(reward_per_sh, 2),
+        "stop_loss_pct": round(sl_pct, 2),
+        "take_profit_pct": round(tp_pct, 2),
+        "tier": tier,
+        "status_color": status_color,
+    }
+

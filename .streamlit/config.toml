@@ -1,6 +1,6 @@
 [theme]
 base = "dark"
-primaryColor = "#6366F1"
+primaryColor = "#FF9900"
 backgroundColor = "#080B11"
 secondaryBackgroundColor = "#0E131F"
 textColor = "#F8FAFC"
@@ -10,3 +10,9 @@ font = "sans serif"
 headless = true
 enableCORS = false
 enableXsrfProtection = false
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"

@@ -58,7 +58,9 @@ TIMEFRAME_TO_TV_INTERVAL: Dict[str, str] = {
 
 def clean_symbol_name(symbol: str) -> str:
     """Normalizes symbol string."""
-    clean = symbol.strip().upper()
+    clean = str(symbol or "INSTRUMENT").strip().upper()
+    if not clean:
+        clean = "INSTRUMENT"
     if clean.endswith(".NS"):
         clean = clean[:-3]
     return clean
@@ -108,6 +110,7 @@ def render_tradingview_lightweight_chart(
     Works for 100% of symbols (Indian & US equities) with zero exchange blocks.
     """
     clean_sym = clean_symbol_name(symbol)
+    safe_timeframe = str(timeframe or "1d")
     market_label = "US (NASDAQ/NYSE)" if is_us_symbol(clean_sym) else "India (NSE)"
     candles = candles_data.get("candles", []) if candles_data else []
 
@@ -134,7 +137,7 @@ def render_tradingview_lightweight_chart(
         vol = float(c.get("volume", 0.0))
 
         candlestick_points.append({"time": t_sec, "open": op, "high": hi, "low": lo, "close": cl})
-        vol_col = "rgba(0, 230, 118, 0.45)" if cl >= op else "rgba(255, 59, 48, 0.45)"
+        vol_col = "rgba(0, 230, 118, 0.45)" if cl >= op else "rgba(255, 51, 102, 0.45)"
         volume_points.append({"time": t_sec, "value": vol, "color": vol_col})
 
     # Sort ascending by time
@@ -201,6 +204,9 @@ def render_tradingview_lightweight_chart(
                 width: 100%;
                 height: 100%;
                 position: relative;
+                border: 1px solid #1E2638;
+                border-radius: 8px;
+                overflow: hidden;
             }}
             #chart-container {{
                 width: 100%;
@@ -234,9 +240,9 @@ def render_tradingview_lightweight_chart(
                 font-weight: 600;
             }}
             .val-up {{ color: #00E676 !important; font-weight: 600; }}
-            .val-down {{ color: #FF3B30 !important; font-weight: 600; }}
+            .val-down {{ color: #FF3366 !important; font-weight: 600; }}
             .ema20-label {{ color: #00F2FE; font-weight: 600; }}
-            .ema50-label {{ color: #FF9100; font-weight: 600; }}
+            .ema50-label {{ color: #FF9900; font-weight: 600; }}
             #watermark {{
                 position: absolute;
                 bottom: 35px;
@@ -254,13 +260,13 @@ def render_tradingview_lightweight_chart(
         <div id="chart-wrapper">
             <div id="legend">
                 <span class="legend-title">{clean_sym}</span>
-                <span class="legend-badge">{timeframe.upper()}</span>
+                <span class="legend-badge">{safe_timeframe.upper()}</span>
                 <span class="legend-badge">{market_label}</span>
                 <span id="leg-ohlc">Loading data...</span>
                 <span class="ema20-label" id="leg-ema20"></span>
                 <span class="ema50-label" id="leg-ema50"></span>
             </div>
-            <div id="watermark">{clean_sym} · {timeframe.upper()}</div>
+            <div id="watermark">{clean_sym} · {safe_timeframe.upper()}</div>
             <div id="chart-container"></div>
         </div>
 
@@ -302,10 +308,10 @@ def render_tradingview_lightweight_chart(
             // 1. Candlestick Series (Minimal Modern Palette)
             const candleSeries = chart.addCandlestickSeries({{
                 upColor: '#00E676',
-                downColor: '#FF3B30',
+                downColor: '#FF3366',
                 borderVisible: false,
                 wickUpColor: '#00E676',
-                wickDownColor: '#FF3B30',
+                wickDownColor: '#FF3366',
             }});
 
             // 2. Volume Series (Histogram at bottom)
@@ -326,9 +332,9 @@ def render_tradingview_lightweight_chart(
                 title: 'EMA 20',
             }});
 
-            // 4. EMA 50 Line Series (Orange)
+            // 4. EMA 50 Line Series (Amber)
             const ema50Series = chart.addLineSeries({{
-                color: '#FF9100',
+                color: '#FF9900',
                 lineWidth: 2,
                 crosshairMarkerVisible: true,
                 title: 'EMA 50',
@@ -429,7 +435,8 @@ def render_tradingview_embed_widget(
     """
     clean_sym = clean_symbol_name(symbol)
     tv_symbol = get_tradingview_symbol(symbol)
-    tv_interval = TIMEFRAME_TO_TV_INTERVAL.get(timeframe.lower(), "D")
+    safe_timeframe = str(timeframe or "1d")
+    tv_interval = TIMEFRAME_TO_TV_INTERVAL.get(safe_timeframe.lower(), "D")
     external_url = get_tradingview_url(symbol)
 
     if not is_us_symbol(clean_sym):
@@ -455,7 +462,7 @@ def render_tradingview_embed_widget(
                 padding: 0;
                 height: 100%;
                 width: 100%;
-                background-color: #121212;
+                background-color: #080B11;
                 overflow: hidden;
             }}
             .tradingview-widget-container {{
@@ -520,16 +527,17 @@ def render_tradingview_chart(
     - If use_embed_widget=True: Uses the iframe Advanced Chart widget (for US stocks / drawing tools).
     - By default: Uses the high-performance TradingView Lightweight Charts canvas engine (supporting all symbols).
     """
+    safe_timeframe = str(timeframe or "1d")
     if use_embed_widget:
-        render_tradingview_embed_widget(symbol, timeframe=timeframe, height=height, theme=theme)
+        render_tradingview_embed_widget(symbol, timeframe=safe_timeframe, height=height, theme=theme)
     elif candles_data and candles_data.get("candles"):
         render_tradingview_lightweight_chart(
             symbol=symbol,
             candles_data=candles_data,
             indicators_data=indicators_data,
-            timeframe=timeframe,
+            timeframe=safe_timeframe,
             height=height,
         )
     else:
         # Fallback to embed widget
-        render_tradingview_embed_widget(symbol, timeframe=timeframe, height=height, theme=theme)
+        render_tradingview_embed_widget(symbol, timeframe=safe_timeframe, height=height, theme=theme)
